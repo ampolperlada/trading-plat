@@ -1,11 +1,15 @@
-// backend/server.js - Expert Option Backend with Real Market Data
+// backend/server.js - Updated with Free Market Data APIs
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const InvestingDataService = require('./services/investingDataService');
+
+// Import our free market data services
+const FreeMarketDataService = require('./services/freeMarketDataService');
+const YahooFinanceService = require('./services/yahooFinanceService');
 
 const app = express();
 const server = http.createServer(app);
@@ -20,9 +24,11 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json());
 
-// Initialize services
-const investingService = new InvestingDataService();
+// Initialize market data services
+const freeMarketService = new FreeMarketDataService();
+const yahooService = new YahooFinanceService();
 let marketData = {};
+let activeService = null;
 
 // In-memory storage (replace with database in production)
 const users = new Map();
@@ -66,7 +72,8 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    marketDataAvailable: Object.keys(marketData).length > 0
+    marketDataAvailable: Object.keys(marketData).length > 0,
+    activeDataSource: activeService?.constructor.name || 'Mock Data'
   });
 });
 
@@ -157,7 +164,12 @@ app.post('/api/auth/register', async (req, res) => {
 
 // Market data endpoints
 app.get('/api/market/data', (req, res) => {
-  res.json(marketData);
+  res.json({
+    data: marketData,
+    source: activeService?.constructor.name || 'Mock Data',
+    timestamp: new Date().toISOString(),
+    count: Object.keys(marketData).length
+  });
 });
 
 app.get('/api/market/data/:symbol', (req, res) => {
@@ -168,7 +180,11 @@ app.get('/api/market/data/:symbol', (req, res) => {
     return res.status(404).json({ error: 'Symbol not found' });
   }
   
-  res.json(data);
+  res.json({
+    symbol: symbol,
+    data: data,
+    source: activeService?.constructor.name || 'Mock Data'
+  });
 });
 
 app.get('/api/market/history/:symbol', async (req, res) => {
@@ -176,7 +192,20 @@ app.get('/api/market/history/:symbol', async (req, res) => {
     const { symbol } = req.params;
     const { interval = '1m', count = 100 } = req.query;
     
-    const historicalData = await investingService.getHistoricalData(symbol, interval, parseInt(count));
+    let historicalData = [];
+    
+    // Try to get historical data from active service
+    if (activeService && activeService.getHistoricalData) {
+      historicalData = await activeService.getHistoricalData(symbol, interval, parseInt(count));
+    } else if (yahooService && yahooService.getHistoricalData) {
+      historicalData = await yahooService.getHistoricalData(symbol, interval, '1d');
+    }
+    
+    // If no historical data, generate mock data
+    if (!historicalData || historicalData.length === 0) {
+      historicalData = generateMockHistoricalData(symbol, parseInt(count));
+    }
+    
     res.json(historicalData);
     
   } catch (error) {
@@ -190,6 +219,19 @@ app.post('/api/trades/execute', authenticateToken, (req, res) => {
   try {
     const { symbol, direction, amount, duration = 60 } = req.body;
     const userId = req.user.userId;
+    
+    // Validation
+    if (!symbol || !direction || !amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (!['CALL', 'PUT'].includes(direction)) {
+      return res.status(400).json({ error: 'Invalid direction. Must be CALL or PUT' });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({ error: 'Amount must be positive' });
+    }
     
     // Get user
     const userEmail = Array.from(users.entries()).find(([email, user]) => user.id === userId)?.[0];
@@ -207,7 +249,7 @@ app.post('/api/trades/execute', authenticateToken, (req, res) => {
     // Get current price
     const currentPrice = marketData[symbol]?.price;
     if (!currentPrice) {
-      return res.status(400).json({ error: 'Invalid symbol' });
+      return res.status(400).json({ error: 'Invalid symbol or price not available' });
     }
 
     // Create trade
@@ -244,7 +286,8 @@ app.post('/api/trades/execute', authenticateToken, (req, res) => {
         amount: trade.amount,
         openPrice: trade.openPrice,
         duration: duration,
-        status: trade.status
+        status: trade.status,
+        timeLeft: trade.duration
       },
       newBalance: user.balance
     });
@@ -278,13 +321,34 @@ app.get('/api/trades/active', authenticateToken, (req, res) => {
   }
 });
 
+// User balance endpoint
+app.get('/api/user/balance', authenticateToken, (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const userEmail = Array.from(users.entries()).find(([email, user]) => user.id === userId)?.[0];
+    const user = users.get(userEmail);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ balance: user.balance });
+  } catch (error) {
+    console.error('Error fetching balance:', error);
+    res.status(500).json({ error: 'Failed to fetch balance' });
+  }
+});
+
 // Trade settlement function
 function settleTrade(tradeId) {
   const trade = trades.get(tradeId);
   if (!trade || trade.status !== 'active') return;
 
   const currentPrice = marketData[trade.symbol]?.price;
-  if (!currentPrice) return;
+  if (!currentPrice) {
+    console.error(`❌ No current price for ${trade.symbol}, cannot settle trade`);
+    return;
+  }
 
   // Determine win/loss
   const isWin = (trade.direction === 'CALL' && currentPrice > trade.openPrice) ||
@@ -308,6 +372,8 @@ function settleTrade(tradeId) {
 
   trades.set(tradeId, trade);
 
+  console.log(`💰 Trade ${tradeId} settled: ${trade.result.toUpperCase()} - Profit: ${trade.profit}`);
+
   // Emit trade result to user
   io.to(`user_${trade.userId}`).emit('tradeSettled', {
     trade: {
@@ -321,6 +387,36 @@ function settleTrade(tradeId) {
       closePrice: trade.closePrice
     }
   });
+}
+
+// Generate mock historical data
+function generateMockHistoricalData(symbol, count) {
+  const data = [];
+  const currentData = marketData[symbol];
+  const basePrice = currentData?.price || 100;
+  let currentPrice = basePrice;
+
+  for (let i = count; i >= 0; i--) {
+    const timestamp = Date.now() - (i * 60000); // 1 minute intervals
+    const open = currentPrice;
+    const change = (Math.random() - 0.5) * 0.01;
+    const close = open + (open * change);
+    const high = Math.max(open, close) + (Math.random() * 0.005);
+    const low = Math.min(open, close) - (Math.random() * 0.005);
+
+    data.push({
+      timestamp,
+      open: parseFloat(open.toFixed(5)),
+      high: parseFloat(high.toFixed(5)),
+      low: parseFloat(low.toFixed(5)),
+      close: parseFloat(close.toFixed(5)),
+      volume: Math.floor(Math.random() * 10000)
+    });
+
+    currentPrice = close;
+  }
+
+  return data;
 }
 
 // WebSocket connections
@@ -357,17 +453,19 @@ io.on('connection', (socket) => {
   });
 });
 
-// Initialize market data service
+// Initialize market data services
 async function initializeMarketData() {
+  console.log('🚀 Initializing market data services...');
+  
   try {
-    console.log('🚀 Initializing market data service...');
-    
-    // Start the investing service
-    marketData = await investingService.start();
+    // Try free market data service first
+    console.log('📡 Attempting to start Free Market Data Service...');
+    marketData = await freeMarketService.start();
+    activeService = freeMarketService;
     
     // Subscribe to real-time updates
     Object.keys(marketData).forEach(symbol => {
-      investingService.subscribe(symbol, (data) => {
+      freeMarketService.subscribe(symbol, (data) => {
         marketData[symbol] = data;
         
         // Broadcast to all subscribers
@@ -378,44 +476,87 @@ async function initializeMarketData() {
       });
     });
     
-    console.log('✅ Market data service initialized successfully');
+    console.log('✅ Free Market Data Service initialized successfully');
     
   } catch (error) {
-    console.error('❌ Failed to initialize market data:', error);
+    console.error('❌ Free Market Data Service failed, trying Yahoo Finance...');
     
-    // Fallback to mock data
-    console.log('🔄 Using mock market data...');
-    setInterval(updateMockMarketData, 1000);
+    try {
+      marketData = await yahooService.start();
+      activeService = yahooService;
+      console.log('✅ Yahoo Finance Service initialized successfully');
+      
+    } catch (yahooError) {
+      console.error('❌ Yahoo Finance Service failed, using mock data...');
+      activeService = null;
+      startMockDataUpdates();
+    }
   }
 }
 
 // Mock market data updater (fallback)
-function updateMockMarketData() {
+function startMockDataUpdates() {
   const symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD', 'AAPL', 'TSLA', 'GOOGL', 'GOLD', 'OIL'];
   
+  // Initialize mock data
   symbols.forEach(symbol => {
-    if (!marketData[symbol]) {
-      marketData[symbol] = investingService.generateMockPrice(symbol);
-    } else {
-      // Update with small random changes
+    marketData[symbol] = generateMockPrice(symbol);
+  });
+  
+  // Update mock data every 2 seconds
+  setInterval(() => {
+    symbols.forEach(symbol => {
+      const currentData = marketData[symbol];
       const change = (Math.random() - 0.5) * 0.1;
-      const newPrice = marketData[symbol].price * (1 + change / 100);
+      const newPrice = currentData.price * (1 + change / 100);
       
       marketData[symbol] = {
-        ...marketData[symbol],
+        ...currentData,
         price: parseFloat(newPrice.toFixed(5)),
         change: parseFloat(change.toFixed(2)),
         changePercent: parseFloat(change.toFixed(2)),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        source: 'mock'
       };
-    }
-    
-    // Broadcast update
-    io.to(`market_${symbol}`).emit('marketUpdate', {
-      symbol: symbol,
-      data: marketData[symbol]
+      
+      // Broadcast update
+      io.to(`market_${symbol}`).emit('marketUpdate', {
+        symbol: symbol,
+        data: marketData[symbol]
+      });
     });
-  });
+  }, 2000);
+  
+  console.log('🔄 Mock data updates started');
+}
+
+function generateMockPrice(symbol) {
+  const basePrices = {
+    'EURUSD': 1.08501,
+    'GBPUSD': 1.24890,
+    'USDJPY': 150.344,
+    'BTCUSD': 65980.65,
+    'ETHUSD': 3110.34,
+    'AAPL': 156.02,
+    'TSLA': 251.23,
+    'GOOGL': 143.52,
+    'GOLD': 2027.40,
+    'OIL': 85.24
+  };
+
+  const basePrice = basePrices[symbol] || 100;
+  const change = (Math.random() - 0.5) * 2;
+  const price = basePrice + (basePrice * change / 100);
+
+  return {
+    symbol: symbol,
+    name: symbol,
+    price: parseFloat(price.toFixed(5)),
+    change: parseFloat(change.toFixed(2)),
+    changePercent: parseFloat(change.toFixed(2)),
+    timestamp: Date.now(),
+    source: 'mock'
+  };
 }
 
 // Start server
@@ -425,6 +566,7 @@ server.listen(PORT, async () => {
   console.log(`🚀 Expert Option Backend running on port ${PORT}`);
   console.log(`📊 WebSocket server ready for real-time data`);
   console.log(`🔐 Demo login: demo@trading.com / demo123`);
+  console.log(`🌐 Health check: http://localhost:${PORT}/api/health`);
   
   // Initialize market data
   await initializeMarketData();
@@ -433,7 +575,9 @@ server.listen(PORT, async () => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('🛑 Shutting down gracefully...');
-  investingService.stop();
+  if (activeService && activeService.stop) {
+    activeService.stop();
+  }
   server.close(() => {
     console.log('✅ Server shut down successfully');
     process.exit(0);

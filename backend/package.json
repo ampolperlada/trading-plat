@@ -1,6 +1,8 @@
 {
   "name": "expert-option-backend",
   "version": "1.0.0",
+  "description": "Expert Option Clone with Real Market Data",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
@@ -10,7 +12,7 @@
     "socket.io": "^4.7.5",
     "cors": "^2.8.5",
     "jsonwebtoken": "^9.0.2",
-    "bcryptjs": "^2.4.3",
+    "bcrypt": "^2.4.3",
     "axios": "^1.6.2",
     "ws": "^8.14.2",
     "dotenv": "^16.3.1"
