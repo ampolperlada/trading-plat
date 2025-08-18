@@ -1,4 +1,4 @@
-// frontend/src/pages/dashboard.js - Main Trading Dashboard
+// frontend/src/pages/trading.js - Real Expert Option Interface
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
@@ -14,12 +14,15 @@ import {
   FaWifi,
   FaWifiSlash,
   FaDollarSign,
-  FaTrophy,
-  FaHistory,
-  FaCog
+  FaPlay,
+  FaPause,
+  FaBell,
+  FaCog,
+  FaQuestionCircle,
+  FaGift
 } from 'react-icons/fa';
 
-export default function Dashboard() {
+export default function ExpertOptionTradingInterface() {
   const { user, logout } = useAuth();
   const { isConnected, prices, subscribeToAssets } = useWebSocket();
   const { 
@@ -35,9 +38,11 @@ export default function Dashboard() {
   } = useTrading();
   
   const router = useRouter();
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [timeframe, setTimeframe] = useState('1m');
   const [countdown, setCountdown] = useState({});
-  const [selectedTab, setSelectedTab] = useState('trade');
   const [priceHistory, setPriceHistory] = useState([]);
+  const [isTrading, setIsTrading] = useState(false);
   const chartRef = useRef(null);
 
   // Redirect if not authenticated
@@ -47,24 +52,28 @@ export default function Dashboard() {
     }
   }, [user]);
 
-  // Subscribe to price updates for selected asset
+  // Subscribe to price updates
   useEffect(() => {
     if (selectedAsset) {
       subscribeToAssets([selectedAsset.symbol]);
     }
   }, [selectedAsset]);
 
-  // Update price history for chart
+  // Update price history for candlestick chart
   useEffect(() => {
     if (selectedAsset && prices[selectedAsset.symbol]) {
-      const newPrice = {
+      const newCandle = {
         time: Date.now(),
-        price: prices[selectedAsset.symbol].price
+        open: prices[selectedAsset.symbol].price,
+        high: prices[selectedAsset.symbol].price * (1 + Math.random() * 0.001),
+        low: prices[selectedAsset.symbol].price * (1 - Math.random() * 0.001),
+        close: prices[selectedAsset.symbol].price,
+        volume: prices[selectedAsset.symbol].volume || Math.random() * 1000000
       };
       
       setPriceHistory(prev => {
-        const updated = [...prev, newPrice];
-        return updated.slice(-100); // Keep last 100 points
+        const updated = [...prev, newCandle];
+        return updated.slice(-200); // Keep last 200 candles
       });
     }
   }, [selectedAsset, prices]);
@@ -93,11 +102,22 @@ export default function Dashboard() {
     ? prices[selectedAsset.symbol].changePercent
     : 0;
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  // Asset categories like Expert Option
+  const assetCategories = [
+    { id: 'all', name: 'All', icon: '🌐' },
+    { id: 'forex', name: 'Forex', icon: '💱' },
+    { id: 'crypto', name: 'Crypto', icon: '₿' },
+    { id: 'stocks', name: 'Stocks', icon: '📈' },
+    { id: 'commodities', name: 'Commodities', icon: '🥇' }
+  ];
+
+  // Timeframes like Expert Option
+  const timeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1D'];
+
+  // Filter assets by category
+  const filteredAssets = selectedCategory === 'all' 
+    ? assets 
+    : assets.filter(asset => asset.category === selectedCategory);
 
   const formatPrice = (price, symbol) => {
     if (!price) return '0.0000';
@@ -111,8 +131,14 @@ export default function Dashboard() {
     }
   };
 
-  // Simple chart component
-  const PriceChart = () => {
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Professional Candlestick Chart Component
+  const CandlestickChart = () => {
     useEffect(() => {
       if (!chartRef.current || priceHistory.length < 2) return;
 
@@ -121,63 +147,72 @@ export default function Dashboard() {
       const { width, height } = canvas;
 
       // Clear canvas
-      ctx.fillStyle = '#111827';
+      ctx.fillStyle = '#1a1d29';
       ctx.fillRect(0, 0, width, height);
 
       if (priceHistory.length < 2) return;
 
       // Calculate price range
-      const prices = priceHistory.map(p => p.price);
-      const minPrice = Math.min(...prices);
-      const maxPrice = Math.max(...prices);
+      const highs = priceHistory.map(c => c.high);
+      const lows = priceHistory.map(c => c.low);
+      const maxPrice = Math.max(...highs);
+      const minPrice = Math.min(...lows);
       const priceRange = maxPrice - minPrice || 1;
 
       // Draw grid
-      ctx.strokeStyle = '#374151';
+      ctx.strokeStyle = '#2a2d3a';
       ctx.lineWidth = 1;
       
-      for (let i = 0; i <= 5; i++) {
-        const y = (height / 5) * i;
+      // Horizontal grid lines
+      for (let i = 0; i <= 10; i++) {
+        const y = (height / 10) * i;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
       }
 
-      // Draw price line
-      const isPositive = priceChange >= 0;
-      ctx.strokeStyle = isPositive ? '#10B981' : '#EF4444';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-
-      priceHistory.forEach((point, index) => {
-        const x = (index / (priceHistory.length - 1)) * width;
-        const y = height - ((point.price - minPrice) / priceRange) * height;
-
-        if (index === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
-
-      ctx.stroke();
-
-      // Draw current price point
-      if (priceHistory.length > 0) {
-        const lastPoint = priceHistory[priceHistory.length - 1];
-        const lastX = width;
-        const lastY = height - ((lastPoint.price - minPrice) / priceRange) * height;
-
-        ctx.fillStyle = isPositive ? '#10B981' : '#EF4444';
+      // Vertical grid lines
+      for (let i = 0; i <= 10; i++) {
+        const x = (width / 10) * i;
         ctx.beginPath();
-        ctx.arc(lastX - 5, lastY, 4, 0, 2 * Math.PI);
-        ctx.fill();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
       }
 
+      // Draw candlesticks
+      const candleWidth = Math.max(2, width / priceHistory.length - 2);
+      
+      priceHistory.forEach((candle, index) => {
+        const x = (index / (priceHistory.length - 1)) * width;
+        
+        const openY = height - ((candle.open - minPrice) / priceRange) * height;
+        const closeY = height - ((candle.close - minPrice) / priceRange) * height;
+        const highY = height - ((candle.high - minPrice) / priceRange) * height;
+        const lowY = height - ((candle.low - minPrice) / priceRange) * height;
+
+        const isGreen = candle.close >= candle.open;
+        
+        // Draw wick
+        ctx.strokeStyle = isGreen ? '#26a69a' : '#ef5350';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, highY);
+        ctx.lineTo(x, lowY);
+        ctx.stroke();
+
+        // Draw body
+        ctx.fillStyle = isGreen ? '#26a69a' : '#ef5350';
+        const bodyTop = Math.min(openY, closeY);
+        const bodyHeight = Math.abs(closeY - openY) || 1;
+        
+        ctx.fillRect(x - candleWidth/2, bodyTop, candleWidth, bodyHeight);
+      });
+
       // Draw price labels
-      ctx.fillStyle = '#9CA3AF';
-      ctx.font = '12px Inter';
+      ctx.fillStyle = '#8892b0';
+      ctx.font = '12px Arial';
       ctx.textAlign = 'right';
 
       for (let i = 0; i <= 5; i++) {
@@ -186,84 +221,119 @@ export default function Dashboard() {
         ctx.fillText(formatPrice(price, selectedAsset?.symbol), width - 10, y);
       }
 
-    }, [priceHistory, selectedAsset, priceChange]);
+    }, [priceHistory, selectedAsset]);
 
     return (
       <canvas
         ref={chartRef}
-        width={800}
-        height={400}
+        width={1000}
+        height={500}
         className="w-full h-full rounded-lg"
-        style={{ maxWidth: '100%', height: '300px' }}
+        style={{ maxWidth: '100%', height: '400px' }}
       />
     );
+  };
+
+  const handleTrade = async (type) => {
+    setIsTrading(true);
+    try {
+      await placeTrade(type);
+    } finally {
+      setIsTrading(false);
+    }
   };
 
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      {/* Top Navigation */}
+    <div className="min-h-screen bg-gray-900 text-white">
+      {/* Expert Option Header */}
       <header className="bg-gray-800 border-b border-gray-700 px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
+            {/* Logo */}
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                 <FaChartLine className="text-white text-sm" />
               </div>
-              <h1 className="text-xl font-bold text-white">ExpertTrade</h1>
+              <h1 className="text-xl font-bold text-white">ExpertOption</h1>
             </div>
             
+            {/* Connection Status */}
             <div className="flex items-center space-x-2">
               {isConnected ? (
-                <FaWifi className="text-green-500" />
+                <div className="flex items-center space-x-1">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-green-500 text-sm">Live</span>
+                </div>
               ) : (
-                <FaWifiSlash className="text-red-500" />
+                <div className="flex items-center space-x-1">
+                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                  <span className="text-red-500 text-sm">Offline</span>
+                </div>
               )}
-              <span className={`text-sm ${isConnected ? 'text-green-500' : 'text-red-500'}`}>
-                {isConnected ? 'Live' : 'Disconnected'}
-              </span>
             </div>
           </div>
 
+          {/* Header Right */}
           <div className="flex items-center space-x-6">
-            <div className="text-right">
-              <p className="text-sm text-gray-400">Balance</p>
-              <p className="text-xl font-bold text-green-500">
-                ${user.balance?.toFixed(2) || '0.00'}
-              </p>
+            {/* Balance */}
+            <div className="bg-gray-700 rounded-lg px-4 py-2">
+              <div className="text-center">
+                <p className="text-gray-400 text-xs">Balance</p>
+                <p className="text-green-500 font-bold text-lg">
+                  ${user.balance?.toFixed(2) || '0.00'}
+                </p>
+              </div>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <FaUser className="text-gray-400" />
-              <span className="text-white">{user.firstName}</span>
-            </div>
+            {/* User Menu */}
+            <div className="flex items-center space-x-4">
+              <button className="text-gray-400 hover:text-white p-2">
+                <FaBell size={18} />
+              </button>
+              <button className="text-gray-400 hover:text-white p-2">
+                <FaGift size={18} />
+              </button>
+              <button className="text-gray-400 hover:text-white p-2">
+                <FaCog size={18} />
+              </button>
+              
+              <div className="flex items-center space-x-2">
+                <FaUser className="text-gray-400" />
+                <span className="text-white text-sm">{user.firstName}</span>
+              </div>
 
-            <button
-              onClick={logout}
-              className="text-gray-400 hover:text-white transition-colors p-2"
-              title="Logout"
-            >
-              <FaSignOutAlt size={18} />
-            </button>
+              <button
+                onClick={logout}
+                className="text-gray-400 hover:text-white p-2"
+                title="Logout"
+              >
+                <FaSignOutAlt size={16} />
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       <div className="flex h-[calc(100vh-73px)]">
-        {/* Left Sidebar - Assets */}
+        {/* Left Panel - Assets (Expert Option Style) */}
         <div className="w-80 bg-gray-800 border-r border-gray-700 flex flex-col">
+          {/* Asset Categories */}
           <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-semibold text-white mb-4">Trading Assets</h2>
-            
-            {/* Asset Categories */}
-            <div className="flex space-x-2 mb-4">
-              {['forex', 'crypto', 'stocks', 'commodities'].map(category => (
+            <div className="flex space-x-1">
+              {assetCategories.map(category => (
                 <button
-                  key={category}
-                  className="px-3 py-1 bg-gray-700 text-gray-300 rounded-lg text-sm hover:bg-gray-600 transition-colors capitalize"
+                  key={category.id}
+                  onClick={() => setSelectedCategory(category.id)}
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    selectedCategory === category.id
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  }`}
                 >
-                  {category}
+                  <span>{category.icon}</span>
+                  <span>{category.name}</span>
                 </button>
               ))}
             </div>
@@ -271,7 +341,7 @@ export default function Dashboard() {
 
           {/* Assets List */}
           <div className="flex-1 overflow-y-auto">
-            {assets.map(asset => {
+            {filteredAssets.map(asset => {
               const assetPrice = prices[asset.symbol]?.price || asset.currentPrice;
               const assetChange = prices[asset.symbol]?.changePercent || asset.changePercent24h || 0;
               const isSelected = selectedAsset?.symbol === asset.symbol;
@@ -288,14 +358,14 @@ export default function Dashboard() {
                 >
                   <div className="flex justify-between items-center">
                     <div>
-                      <p className="text-white font-medium">{asset.name}</p>
-                      <p className="text-gray-400 text-sm">{asset.symbol}</p>
+                      <p className="text-white font-medium text-sm">{asset.symbol}</p>
+                      <p className="text-gray-400 text-xs">{asset.name}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-white font-medium">
+                      <p className="text-white font-medium text-sm">
                         {formatPrice(assetPrice, asset.symbol)}
                       </p>
-                      <p className={`text-sm ${assetChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      <p className={`text-xs ${assetChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                         {assetChange >= 0 ? '+' : ''}{assetChange.toFixed(2)}%
                       </p>
                     </div>
@@ -306,218 +376,177 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col">
-          {/* Chart Section */}
-          <div className="flex-1 p-6">
-            <div className="bg-gray-800 rounded-xl p-6 h-full">
-              <div className="flex items-center justify-between mb-6">
+        {/* Center Panel - Chart (Expert Option Style) */}
+        <div className="flex-1 flex flex-col bg-gray-900">
+          {/* Chart Header */}
+          <div className="bg-gray-800 px-6 py-4 border-b border-gray-700">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
                 <div>
-                  <h2 className="text-2xl font-bold text-white">{selectedAsset?.name || 'Select Asset'}</h2>
-                  <p className="text-gray-400">{selectedAsset?.symbol}</p>
+                  <h2 className="text-xl font-bold text-white">{selectedAsset?.symbol || 'Select Asset'}</h2>
+                  <p className="text-gray-400 text-sm">{selectedAsset?.name}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-3xl font-bold text-white">
+                  <p className="text-2xl font-bold text-white">
                     {formatPrice(currentPrice, selectedAsset?.symbol)}
                   </p>
-                  <p className={`text-lg ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  <p className={`text-sm ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                     {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
                   </p>
                 </div>
               </div>
-              
-              <div className="h-[calc(100%-120px)] bg-gray-900 rounded-lg p-4">
-                <PriceChart />
+
+              {/* Timeframe Selector */}
+              <div className="flex space-x-1">
+                {timeframes.map(tf => (
+                  <button
+                    key={tf}
+                    onClick={() => setTimeframe(tf)}
+                    className={`px-3 py-1 rounded text-sm transition-colors ${
+                      timeframe === tf
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                    }`}
+                  >
+                    {tf}
+                  </button>
+                ))}
               </div>
+            </div>
+          </div>
+          
+          {/* Chart Container */}
+          <div className="flex-1 p-6">
+            <div className="h-full bg-gray-800 rounded-lg p-4">
+              <CandlestickChart />
             </div>
           </div>
         </div>
 
-        {/* Right Sidebar - Trading Panel */}
+        {/* Right Panel - Trading (Expert Option Style) */}
         <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col">
-          {/* Tabs */}
-          <div className="p-4 border-b border-gray-700">
-            <div className="flex space-x-2">
-              {[
-                { id: 'trade', label: 'Trade', icon: FaChartLine },
-                { id: 'active', label: 'Active', icon: FaClock },
-                { id: 'history', label: 'History', icon: FaHistory }
-              ].map(tab => {
-                const Icon = tab.icon;
-                return (
+          {/* Trading Panel */}
+          <div className="p-6 space-y-6">
+            <h2 className="text-lg font-bold text-white">Trade</h2>
+            
+            {/* Investment Amount */}
+            <div>
+              <label className="block text-gray-300 text-sm font-medium mb-3">
+                Investment
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
+                <input
+                  type="number"
+                  value={tradeAmount}
+                  onChange={(e) => dispatch({ type: 'SET_TRADE_AMOUNT', payload: parseFloat(e.target.value) || 0 })}
+                  className="w-full pl-8 pr-4 py-3 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none text-lg font-medium"
+                  min="1"
+                  step="1"
+                />
+              </div>
+              <div className="flex space-x-2 mt-3">
+                {[10, 25, 50, 100, 250, 500].map(amount => (
                   <button
-                    key={tab.id}
-                    onClick={() => setSelectedTab(tab.id)}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                      selectedTab === tab.id 
-                        ? 'bg-blue-600 text-white' 
-                        : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                    }`}
+                    key={amount}
+                    onClick={() => dispatch({ type: 'SET_TRADE_AMOUNT', payload: amount })}
+                    className="flex-1 px-2 py-2 bg-gray-700 text-gray-300 rounded text-sm hover:bg-gray-600 transition-colors"
                   >
-                    <Icon size={16} />
-                    <span className="text-sm">{tab.label}</span>
+                    ${amount}
                   </button>
-                );
-              })}
+                ))}
+              </div>
+            </div>
+
+            {/* Time Selector */}
+            <div>
+              <label className="block text-gray-300 text-sm font-medium mb-3">
+                Time
+              </label>
+              <select
+                value={tradeDuration}
+                onChange={(e) => dispatch({ type: 'SET_TRADE_DURATION', payload: parseInt(e.target.value) })}
+                className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none"
+              >
+                <option value={60}>1 minute</option>
+                <option value={300}>5 minutes</option>
+                <option value={900}>15 minutes</option>
+                <option value={1800}>30 minutes</option>
+                <option value={3600}>1 hour</option>
+              </select>
+            </div>
+
+            {/* Trade Buttons - Expert Option Style */}
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => handleTrade('PUT')}
+                disabled={!selectedAsset || isTrading}
+                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 disabled:bg-gray-600 disabled:opacity-50 text-white font-bold py-6 px-4 rounded-lg transition-all transform hover:scale-105 flex flex-col items-center space-y-2"
+              >
+                <FaArrowDown size={24} />
+                <span className="text-lg">PUT</span>
+                <span className="text-xs opacity-75">Lower</span>
+              </button>
+              
+              <button
+                onClick={() => handleTrade('CALL')}
+                disabled={!selectedAsset || isTrading}
+                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:bg-gray-600 disabled:opacity-50 text-white font-bold py-6 px-4 rounded-lg transition-all transform hover:scale-105 flex flex-col items-center space-y-2"
+              >
+                <FaArrowUp size={24} />
+                <span className="text-lg">CALL</span>
+                <span className="text-xs opacity-75">Higher</span>
+              </button>
+            </div>
+
+            {/* Trade Info */}
+            <div className="bg-gray-700 rounded-lg p-4 space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Payout</span>
+                <span className="text-green-500 font-medium">80%</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Profit</span>
+                <span className="text-green-500 font-medium">+${(tradeAmount * 0.8).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Investment</span>
+                <span className="text-white font-medium">${tradeAmount.toFixed(2)}</span>
+              </div>
             </div>
           </div>
 
-          {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto">
-            {selectedTab === 'trade' && (
-              <div className="p-4 space-y-6">
-                <h2 className="text-lg font-semibold text-white">Place Trade</h2>
-                
-                {/* Trade Amount */}
-                <div>
-                  <label className="block text-gray-300 text-sm font-medium mb-2">
-                    Investment Amount
-                  </label>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-white">$</span>
-                    <input
-                      type="number"
-                      value={tradeAmount}
-                      onChange={(e) => dispatch({ type: 'SET_TRADE_AMOUNT', payload: parseFloat(e.target.value) || 0 })}
-                      className="flex-1 px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none"
-                      min="1"
-                      step="1"
-                    />
-                  </div>
-                  <div className="flex space-x-2 mt-2">
-                    {[10, 25, 50, 100].map(amount => (
-                      <button
-                        key={amount}
-                        onClick={() => dispatch({ type: 'SET_TRADE_AMOUNT', payload: amount })}
-                        className="px-3 py-1 bg-gray-700 text-gray-300 rounded text-sm hover:bg-gray-600 transition-colors"
-                      >
-                        ${amount}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Trade Duration */}
-                <div>
-                  <label className="block text-gray-300 text-sm font-medium mb-2">
-                    Expiry Time
-                  </label>
-                  <select
-                    value={tradeDuration}
-                    onChange={(e) => dispatch({ type: 'SET_TRADE_DURATION', payload: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none"
-                  >
-                    <option value={60}>1 minute</option>
-                    <option value={300}>5 minutes</option>
-                    <option value={900}>15 minutes</option>
-                    <option value={1800}>30 minutes</option>
-                    <option value={3600}>1 hour</option>
-                  </select>
-                </div>
-
-                {/* Trade Buttons */}
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => placeTrade('CALL')}
-                    disabled={!selectedAsset || isLoading}
-                    className="flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 text-white font-semibold py-4 px-4 rounded-lg transition-all transform hover:scale-105"
-                  >
-                    <FaArrowUp />
-                    <span>CALL</span>
-                  </button>
-                  <button
-                    onClick={() => placeTrade('PUT')}
-                    disabled={!selectedAsset || isLoading}
-                    className="flex items-center justify-center space-x-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 text-white font-semibold py-4 px-4 rounded-lg transition-all transform hover:scale-105"
-                  >
-                    <FaArrowDown />
-                    <span>PUT</span>
-                  </button>
-                </div>
-
-                {/* Trade Info */}
-                <div className="bg-gray-700 rounded-lg p-4">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-400">Payout Rate</span>
-                    <span className="text-white">80%</span>
-                  </div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-400">Potential Profit</span>
-                    <span className="text-green-500">+${(tradeAmount * 0.8).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Risk Amount</span>
-                    <span className="text-red-500">${tradeAmount.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {selectedTab === 'active' && (
-              <div className="p-4">
-                <h2 className="text-lg font-semibold text-white mb-4">Active Trades</h2>
-                <div className="space-y-3">
-                  {activeTrades.map(trade => (
-                    <div key={trade._id} className="bg-gray-700 rounded-lg p-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-white font-medium">{trade.asset}</span>
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          trade.type === 'CALL' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-                        }`}>
-                          {trade.type}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Amount: ${trade.amount}</span>
-                        <span className="text-gray-400">
-                          {countdown[trade._id] ? formatTime(countdown[trade._id]) : 'Expired'}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-400">
-                        Entry: {formatPrice(trade.entryPrice, trade.asset)}
-                      </div>
+          {/* Active Trades */}
+          <div className="flex-1 border-t border-gray-700">
+            <div className="p-4">
+              <h3 className="text-white font-medium mb-4">Active Trades</h3>
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {activeTrades.map(trade => (
+                  <div key={trade._id} className="bg-gray-700 rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-white font-medium text-sm">{trade.asset}</span>
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        trade.type === 'CALL' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+                      }`}>
+                        {trade.type}
+                      </span>
                     </div>
-                  ))}
-                  {activeTrades.length === 0 && (
-                    <p className="text-gray-400 text-center py-8">No active trades</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {selectedTab === 'history' && (
-              <div className="p-4">
-                <h2 className="text-lg font-semibold text-white mb-4">Trade History</h2>
-                <div className="space-y-3">
-                  {tradesHistory.slice(0, 10).map(trade => (
-                    <div key={trade._id} className="bg-gray-700 rounded-lg p-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-white font-medium">{trade.asset}</span>
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          trade.status === 'WON' ? 'bg-green-600 text-white' : 
-                          trade.status === 'LOST' ? 'bg-red-600 text-white' : 
-                          'bg-yellow-600 text-white'
-                        }`}>
-                          {trade.status}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">${trade.amount}</span>
-                        <span className={`${trade.profit > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {trade.profit > 0 ? '+' : ''}${trade.profit.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {new Date(trade.createdAt).toLocaleString()}
-                      </div>
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>${trade.amount}</span>
+                      <span>
+                        {countdown[trade._id] ? formatTime(countdown[trade._id]) : 'Expired'}
+                      </span>
                     </div>
-                  ))}
-                  {tradesHistory.length === 0 && (
-                    <p className="text-gray-400 text-center py-8">No trades yet</p>
-                  )}
-                </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Entry: {formatPrice(trade.entryPrice, trade.asset)}
+                    </div>
+                  </div>
+                ))}
+                {activeTrades.length === 0 && (
+                  <p className="text-gray-400 text-sm text-center py-8">No active trades</p>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>

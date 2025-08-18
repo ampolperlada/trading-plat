@@ -1,4 +1,4 @@
-// frontend/src/pages/trading.js - Real Expert Option Interface
+// frontend/src/pages/trading.js - Expert Option Trading Interface
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
@@ -22,7 +22,7 @@ import {
   FaGift
 } from 'react-icons/fa';
 
-export default function ExpertOptionTradingInterface() {
+export default function Trading() {
   const { user, logout } = useAuth();
   const { isConnected, prices, subscribeToAssets } = useWebSocket();
   const { 

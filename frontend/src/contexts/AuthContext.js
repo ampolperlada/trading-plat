@@ -99,7 +99,7 @@ export function AuthProvider({ children }) {
       });
 
       toast.success('Welcome to TradePro!');
-      router.push('/dashboard');
+router.push('/trading');
     } catch (error) {
       dispatch({
         type: 'LOGIN_FAILURE',
@@ -136,7 +136,7 @@ export function AuthProvider({ children }) {
       });
 
       toast.success('Account created successfully!');
-      router.push('/dashboard');
+router.push('/trading');
     } catch (error) {
       dispatch({
         type: 'LOGIN_FAILURE',
