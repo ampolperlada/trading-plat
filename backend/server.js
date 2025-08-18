@@ -1,9 +1,8 @@
-// backend/server.js - Main Trading Platform Server
+// backend/server.js - Simplified Trading Platform Server (No Database Required)
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const mongoose = require('mongoose');
 const http = require('http');
 const socketIo = require('socket.io');
 const jwt = require('jsonwebtoken');
@@ -25,65 +24,46 @@ const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.json()
+    winston.format.simple()
   ),
   transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' }),
-    new winston.transports.Console({
-      format: winston.format.simple()
-    })
+    new winston.transports.Console()
   ]
 });
 
-// Database Models
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  firstName: { type: String, required: true },
-  lastName: { type: String, required: true },
-  balance: { type: Number, default: 10000 }, // Demo balance
-  isVerified: { type: Boolean, default: true }, // Auto-verified for demo
-  role: { type: String, enum: ['user', 'admin'], default: 'user' },
-  createdAt: { type: Date, default: Date.now },
-  lastLogin: { type: Date },
-  preferences: {
-    theme: { type: String, default: 'dark' },
-    notifications: { type: Boolean, default: true },
-    riskLevel: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' }
+// In-Memory Data Storage (replaces database)
+const inMemoryUsers = [
+  {
+    id: '1',
+    email: 'demo@trading.com',
+    password: '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LeAGxc9D8mREYbKK.', // demo123
+    firstName: 'Demo',
+    lastName: 'Trader',
+    balance: 10000,
+    createdAt: new Date(),
+    lastLogin: null
   }
-});
+];
 
-const tradeSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  asset: { type: String, required: true }, // EURUSD, BTCUSD, etc.
-  type: { type: String, enum: ['CALL', 'PUT'], required: true },
-  amount: { type: Number, required: true },
-  entryPrice: { type: Number, required: true },
-  exitPrice: { type: Number },
-  duration: { type: Number, required: true }, // in seconds
-  status: { type: String, enum: ['PENDING', 'WON', 'LOST'], default: 'PENDING' },
-  profit: { type: Number, default: 0 },
-  payout: { type: Number, default: 0.8 }, // 80% payout
-  createdAt: { type: Date, default: Date.now },
-  expiresAt: { type: Date, required: true }
-});
+const inMemoryTrades = [];
+let tradeIdCounter = 1;
 
-const assetSchema = new mongoose.Schema({
-  symbol: { type: String, required: true, unique: true },
-  name: { type: String, required: true },
-  category: { type: String, enum: ['forex', 'crypto', 'stocks', 'commodities'] },
-  currentPrice: { type: Number, required: true },
-  change24h: { type: Number, default: 0 },
-  changePercent24h: { type: Number, default: 0 },
-  volume: { type: Number, default: 0 },
-  isActive: { type: Boolean, default: true },
-  lastUpdated: { type: Date, default: Date.now }
-});
-
-const User = mongoose.model('User', userSchema);
-const Trade = mongoose.model('Trade', tradeSchema);
-const Asset = mongoose.model('Asset', assetSchema);
+const inMemoryAssets = [
+  { symbol: 'EURUSD', name: 'EUR/USD', category: 'forex', currentPrice: 1.0850, changePercent24h: 0.12, isActive: true },
+  { symbol: 'GBPUSD', name: 'GBP/USD', category: 'forex', currentPrice: 1.2650, changePercent24h: -0.34, isActive: true },
+  { symbol: 'USDJPY', name: 'USD/JPY', category: 'forex', currentPrice: 150.25, changePercent24h: 0.89, isActive: true },
+  { symbol: 'USDCHF', name: 'USD/CHF', category: 'forex', currentPrice: 0.8950, changePercent24h: 0.45, isActive: true },
+  { symbol: 'BTCUSD', name: 'Bitcoin/USD', category: 'crypto', currentPrice: 65000, changePercent24h: 2.45, isActive: true },
+  { symbol: 'ETHUSD', name: 'Ethereum/USD', category: 'crypto', currentPrice: 3200, changePercent24h: 1.89, isActive: true },
+  { symbol: 'BNBUSD', name: 'Binance Coin/USD', category: 'crypto', currentPrice: 245, changePercent24h: 3.21, isActive: true },
+  { symbol: 'AAPL', name: 'Apple Inc.', category: 'stocks', currentPrice: 195.50, changePercent24h: 0.67, isActive: true },
+  { symbol: 'TSLA', name: 'Tesla Inc.', category: 'stocks', currentPrice: 250.75, changePercent24h: -1.23, isActive: true },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', category: 'stocks', currentPrice: 142.80, changePercent24h: 0.98, isActive: true },
+  { symbol: 'MSFT', name: 'Microsoft Corp.', category: 'stocks', currentPrice: 378.90, changePercent24h: 1.45, isActive: true },
+  { symbol: 'GOLD', name: 'Gold', category: 'commodities', currentPrice: 2020.50, changePercent24h: 0.45, isActive: true },
+  { symbol: 'SILVER', name: 'Silver', category: 'commodities', currentPrice: 24.85, changePercent24h: -0.67, isActive: true },
+  { symbol: 'OIL', name: 'Crude Oil', category: 'commodities', currentPrice: 85.25, changePercent24h: -0.78, isActive: true }
+];
 
 // Middleware
 app.use(helmet());
@@ -119,36 +99,25 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Market Data Service (Simulated Expert Option style)
+// Market Data Service (In-Memory)
 class MarketDataService {
   constructor() {
-    this.assets = new Map();
     this.priceHistory = new Map();
-    this.subscribers = new Set();
     this.startPriceSimulation();
   }
 
   startPriceSimulation() {
-    // Update prices every second (like Expert Option)
+    // Update prices every second
     setInterval(() => {
       this.updatePrices();
     }, 1000);
-
-    // Save to database every 10 seconds
-    setInterval(() => {
-      this.savePricesToDatabase();
-    }, 10000);
   }
 
-  async updatePrices() {
+  updatePrices() {
     try {
-      const assets = await Asset.find({ isActive: true });
-      
-      assets.forEach(asset => {
+      inMemoryAssets.forEach(asset => {
         const volatility = this.getVolatility(asset.category);
-        const trend = this.getMarketTrend();
-        const change = this.generatePriceChange(volatility, trend);
-        
+        const change = (Math.random() - 0.5) * volatility;
         const newPrice = Math.max(0.0001, asset.currentPrice * (1 + change));
         
         // Store price history for charts
@@ -166,25 +135,22 @@ class MarketDataService {
         const history = this.priceHistory.get(asset.symbol);
         history.push(priceData);
         
-        // Keep only last 1000 points (about 16 minutes of data)
-        if (history.length > 1000) {
+        // Keep only last 100 points
+        if (history.length > 100) {
           history.shift();
         }
         
-        // Update asset object
+        // Update asset
         asset.currentPrice = newPrice;
-        asset.change24h = change * asset.currentPrice;
         asset.changePercent24h = change * 100;
-        asset.volume = priceData.volume;
-        asset.lastUpdated = new Date();
         
         // Broadcast to all connected clients
         io.emit('priceUpdate', {
           symbol: asset.symbol,
           price: newPrice,
-          change: asset.change24h,
-          changePercent: asset.changePercent24h,
-          volume: asset.volume,
+          change: change * newPrice,
+          changePercent: change * 100,
+          volume: priceData.volume,
           timestamp: Date.now()
         });
       });
@@ -193,52 +159,29 @@ class MarketDataService {
     }
   }
 
-  generatePriceChange(volatility, trend) {
-    // Generate more realistic price movements
-    const random = (Math.random() - 0.5) * 2; // -1 to 1
-    const trendInfluence = trend * 0.3; // Add market trend
-    const noise = random * volatility;
-    
-    return (trendInfluence + noise) * (1 + Math.sin(Date.now() / 10000) * 0.1);
-  }
-
   getVolatility(category) {
     const volatilities = {
-      forex: 0.0005,   // Very low volatility
-      crypto: 0.015,   // High volatility
-      stocks: 0.003,   // Medium volatility
+      forex: 0.0005,
+      crypto: 0.015,
+      stocks: 0.003,
       commodities: 0.002
     };
     return volatilities[category] || 0.001;
   }
 
-  getMarketTrend() {
-    // Simulate market trends (bull/bear cycles)
-    const time = Date.now();
-    const cycle = Math.sin(time / 300000) * 0.001; // 5-minute cycles
-    return cycle;
+  getCurrentPrice(symbol) {
+    const asset = inMemoryAssets.find(a => a.symbol === symbol);
+    return asset ? {
+      price: asset.currentPrice,
+      change: 0,
+      changePercent: asset.changePercent24h,
+      volume: Math.random() * 1000000
+    } : null;
   }
 
-  async getCurrentPrice(symbol) {
-    try {
-      const asset = await Asset.findOne({ symbol });
-      return asset ? {
-        price: asset.currentPrice,
-        change: asset.change24h,
-        changePercent: asset.changePercent24h,
-        volume: asset.volume
-      } : null;
-    } catch (error) {
-      logger.error('Get price error:', error);
-      return null;
-    }
-  }
-
-  getPriceHistory(symbol, timeframe = '1m') {
+  getPriceHistory(symbol) {
     const history = this.priceHistory.get(symbol) || [];
-    
-    // Return last 100 points for charts
-    return history.slice(-100).map(point => ({
+    return history.slice(-50).map(point => ({
       time: point.timestamp,
       open: point.price,
       high: point.price * (1 + Math.random() * 0.001),
@@ -247,33 +190,9 @@ class MarketDataService {
       volume: point.volume
     }));
   }
-
-  async savePricesToDatabase() {
-    try {
-      const assets = await Asset.find({ isActive: true });
-      const bulkOps = assets.map(asset => ({
-        updateOne: {
-          filter: { symbol: asset.symbol },
-          update: {
-            currentPrice: asset.currentPrice,
-            change24h: asset.change24h,
-            changePercent24h: asset.changePercent24h,
-            volume: asset.volume,
-            lastUpdated: new Date()
-          }
-        }
-      }));
-      
-      if (bulkOps.length > 0) {
-        await Asset.bulkWrite(bulkOps);
-      }
-    } catch (error) {
-      logger.error('Database save error:', error);
-    }
-  }
 }
 
-// Trading Engine (Expert Option style)
+// Trading Engine (In-Memory)
 class TradingEngine {
   constructor() {
     this.activeTrades = new Map();
@@ -281,18 +200,17 @@ class TradingEngine {
   }
 
   startTradeMonitoring() {
-    // Check for expired trades every second
     setInterval(() => {
       this.checkExpiredTrades();
     }, 1000);
   }
 
-  async createTrade(userId, tradeData) {
+  createTrade(userId, tradeData) {
     try {
       const { asset, type, amount, duration } = tradeData;
       
-      // Validate user balance
-      const user = await User.findById(userId);
+      // Find user
+      const user = inMemoryUsers.find(u => u.id === userId);
       if (!user) {
         throw new Error('User not found');
       }
@@ -302,31 +220,35 @@ class TradingEngine {
       }
 
       // Get current price
-      const marketData = await marketDataService.getCurrentPrice(asset);
+      const marketData = marketDataService.getCurrentPrice(asset);
       if (!marketData) {
         throw new Error('Asset not available');
       }
 
       // Create trade
-      const trade = new Trade({
+      const trade = {
+        _id: (tradeIdCounter++).toString(),
         userId,
         asset,
         type,
         amount,
         entryPrice: marketData.price,
+        exitPrice: null,
         duration,
+        status: 'PENDING',
+        profit: 0,
+        payout: 0.8,
+        createdAt: new Date(),
         expiresAt: new Date(Date.now() + duration * 1000)
-      });
+      };
 
-      await trade.save();
+      inMemoryTrades.push(trade);
 
       // Deduct amount from user balance
-      await User.findByIdAndUpdate(userId, {
-        $inc: { balance: -amount }
-      });
+      user.balance -= amount;
 
       // Add to active monitoring
-      this.activeTrades.set(trade._id.toString(), trade);
+      this.activeTrades.set(trade._id, trade);
 
       // Notify user
       io.to(`user_${userId}`).emit('tradeCreated', {
@@ -346,24 +268,24 @@ class TradingEngine {
     }
   }
 
-  async checkExpiredTrades() {
+  checkExpiredTrades() {
     try {
-      const expiredTrades = await Trade.find({
-        status: 'PENDING',
-        expiresAt: { $lte: new Date() }
-      });
+      const now = new Date();
+      const expiredTrades = inMemoryTrades.filter(trade => 
+        trade.status === 'PENDING' && new Date(trade.expiresAt) <= now
+      );
 
-      for (const trade of expiredTrades) {
-        await this.settleTrade(trade);
-      }
+      expiredTrades.forEach(trade => {
+        this.settleTrade(trade);
+      });
     } catch (error) {
       logger.error('Check expired trades error:', error);
     }
   }
 
-  async settleTrade(trade) {
+  settleTrade(trade) {
     try {
-      const marketData = await marketDataService.getCurrentPrice(trade.asset);
+      const marketData = marketDataService.getCurrentPrice(trade.asset);
       if (!marketData) {
         logger.error(`Cannot settle trade ${trade._id}: No market data for ${trade.asset}`);
         return;
@@ -372,35 +294,34 @@ class TradingEngine {
       const exitPrice = marketData.price;
       let isWin = false;
 
-      // Determine if trade won (Expert Option logic)
+      // Determine if trade won
       if (trade.type === 'CALL') {
         isWin = exitPrice > trade.entryPrice;
       } else { // PUT
         isWin = exitPrice < trade.entryPrice;
       }
 
-      const profit = isWin ? trade.amount * trade.payout : 0; // 80% payout if win
+      const profit = isWin ? trade.amount * trade.payout : 0;
       const status = isWin ? 'WON' : 'LOST';
 
       // Update trade
-      await Trade.findByIdAndUpdate(trade._id, {
-        exitPrice,
-        status,
-        profit
-      });
+      trade.exitPrice = exitPrice;
+      trade.status = status;
+      trade.profit = profit;
 
       // Update user balance if won
       if (isWin) {
-        await User.findByIdAndUpdate(trade.userId, {
-          $inc: { balance: trade.amount + profit }
-        });
+        const user = inMemoryUsers.find(u => u.id === trade.userId);
+        if (user) {
+          user.balance += trade.amount + profit;
+        }
       }
 
       // Remove from active monitoring
-      this.activeTrades.delete(trade._id.toString());
+      this.activeTrades.delete(trade._id);
 
       // Get updated user balance
-      const updatedUser = await User.findById(trade.userId);
+      const user = inMemoryUsers.find(u => u.id === trade.userId);
 
       // Notify user via WebSocket
       io.to(`user_${trade.userId}`).emit('tradeSettled', {
@@ -412,7 +333,7 @@ class TradingEngine {
         exitPrice,
         status,
         profit,
-        newBalance: updatedUser.balance
+        newBalance: user ? user.balance : 0
       });
 
       logger.info(`Trade settled: ${trade._id} - ${status} - Profit: ${profit}`);
@@ -432,7 +353,8 @@ app.get('/api/health', (req, res) => {
     status: 'healthy', 
     timestamp: new Date(),
     uptime: process.uptime(),
-    version: '1.0.0'
+    version: '1.0.0',
+    mode: 'in-memory'
   });
 });
 
@@ -441,33 +363,33 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, firstName, lastName } = req.body;
 
-    // Validation
     if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
     // Check if user exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = inMemoryUsers.find(u => u.email === email);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 12);
-
-    // Create user
-    const user = new User({
+    // Create new user
+    const newUser = {
+      id: (Date.now()).toString(),
       email,
-      password: hashedPassword,
+      password: await bcrypt.hash(password, 10),
       firstName,
-      lastName
-    });
+      lastName,
+      balance: 10000,
+      createdAt: new Date(),
+      lastLogin: null
+    };
 
-    await user.save();
+    inMemoryUsers.push(newUser);
 
     // Generate JWT
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: newUser.id, email: newUser.email },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
@@ -476,11 +398,11 @@ app.post('/api/auth/register', async (req, res) => {
       message: 'User created successfully',
       token,
       user: {
-        id: user._id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        balance: user.balance
+        id: newUser.id,
+        email: newUser.email,
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
+        balance: newUser.balance
       }
     });
 
@@ -496,24 +418,29 @@ app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
 
     // Find user
-    const user = await User.findOne({ email });
+    const user = inMemoryUsers.find(u => u.email === email);
     if (!user) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
-    // Check password
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    // Check password - special case for demo account
+    let isValidPassword = false;
+    if (email === 'demo@trading.com' && password === 'demo123') {
+      isValidPassword = true;
+    } else {
+      isValidPassword = await bcrypt.compare(password, user.password);
+    }
+
     if (!isValidPassword) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
     // Update last login
     user.lastLogin = new Date();
-    await user.save();
 
     // Generate JWT
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: user.id, email: user.email },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
@@ -522,7 +449,7 @@ app.post('/api/auth/login', async (req, res) => {
       message: 'Login successful',
       token,
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
@@ -538,31 +465,33 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // User Routes
-app.get('/api/user/profile', authenticateToken, async (req, res) => {
+app.get('/api/user/profile', authenticateToken, (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select('-password');
-    res.json(user);
+    const user = inMemoryUsers.find(u => u.id === req.user.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const { password, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
 
 // Asset Routes
-app.get('/api/assets', async (req, res) => {
+app.get('/api/assets', (req, res) => {
   try {
-    const assets = await Asset.find({ isActive: true }).sort({ name: 1 });
-    res.json(assets);
+    res.json(inMemoryAssets.filter(asset => asset.isActive));
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch assets' });
   }
 });
 
-app.get('/api/assets/:symbol/history', async (req, res) => {
+app.get('/api/assets/:symbol/history', (req, res) => {
   try {
     const { symbol } = req.params;
-    const { timeframe = '1m' } = req.query;
-    
-    const history = marketDataService.getPriceHistory(symbol, timeframe);
+    const history = marketDataService.getPriceHistory(symbol);
     res.json(history);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch price history' });
@@ -570,9 +499,9 @@ app.get('/api/assets/:symbol/history', async (req, res) => {
 });
 
 // Trading Routes
-app.post('/api/trades', authenticateToken, async (req, res) => {
+app.post('/api/trades', authenticateToken, (req, res) => {
   try {
-    const trade = await tradingEngine.createTrade(req.user.userId, req.body);
+    const trade = tradingEngine.createTrade(req.user.userId, req.body);
     res.status(201).json(trade);
   } catch (error) {
     logger.error('Trade creation error:', error);
@@ -580,25 +509,22 @@ app.post('/api/trades', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/trades/history', authenticateToken, async (req, res) => {
+app.get('/api/trades/history', authenticateToken, (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    const trades = await Trade.find({ userId: req.user.userId })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const total = await Trade.countDocuments({ userId: req.user.userId });
+    const userTrades = inMemoryTrades.filter(trade => trade.userId === req.user.userId);
+    const sortedTrades = userTrades.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const paginatedTrades = sortedTrades.slice(skip, skip + limit);
 
     res.json({
-      trades,
+      trades: paginatedTrades,
       pagination: {
         current: page,
-        pages: Math.ceil(total / limit),
-        total
+        pages: Math.ceil(userTrades.length / limit),
+        total: userTrades.length
       }
     });
   } catch (error) {
@@ -606,12 +532,11 @@ app.get('/api/trades/history', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/trades/active', authenticateToken, async (req, res) => {
+app.get('/api/trades/active', authenticateToken, (req, res) => {
   try {
-    const activeTrades = await Trade.find({ 
-      userId: req.user.userId,
-      status: 'PENDING'
-    }).sort({ createdAt: -1 });
+    const activeTrades = inMemoryTrades.filter(trade => 
+      trade.userId === req.user.userId && trade.status === 'PENDING'
+    );
 
     res.json(activeTrades);
   } catch (error) {
@@ -620,10 +545,10 @@ app.get('/api/trades/active', authenticateToken, async (req, res) => {
 });
 
 // Market Data Routes
-app.get('/api/market/prices/:symbol', async (req, res) => {
+app.get('/api/market/prices/:symbol', (req, res) => {
   try {
     const { symbol } = req.params;
-    const priceData = await marketDataService.getCurrentPrice(symbol);
+    const priceData = marketDataService.getCurrentPrice(symbol);
     
     if (!priceData) {
       return res.status(404).json({ error: 'Asset not found' });
@@ -673,108 +598,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/trading_platform')
-
-
-
-.then(() => logger.info('Connected to MongoDB'))
-.catch(error => logger.error('MongoDB connection error:', error));
-
-// Initialize demo assets (Expert Option style)
-const initializeDemoAssets = async () => {
-  try {
-    const count = await Asset.countDocuments();
-    if (count === 0) {
-      const demoAssets = [
-        // Forex Pairs (Major)
-        { symbol: 'EURUSD', name: 'EUR/USD', category: 'forex', currentPrice: 1.0850 },
-        { symbol: 'GBPUSD', name: 'GBP/USD', category: 'forex', currentPrice: 1.2650 },
-        { symbol: 'USDJPY', name: 'USD/JPY', category: 'forex', currentPrice: 150.25 },
-        { symbol: 'USDCHF', name: 'USD/CHF', category: 'forex', currentPrice: 0.8950 },
-        { symbol: 'AUDUSD', name: 'AUD/USD', category: 'forex', currentPrice: 0.6750 },
-        { symbol: 'USDCAD', name: 'USD/CAD', category: 'forex', currentPrice: 1.3550 },
-        
-        // Cryptocurrencies
-        { symbol: 'BTCUSD', name: 'Bitcoin/USD', category: 'crypto', currentPrice: 65000 },
-        { symbol: 'ETHUSD', name: 'Ethereum/USD', category: 'crypto', currentPrice: 3200 },
-        { symbol: 'BNBUSD', name: 'Binance Coin/USD', category: 'crypto', currentPrice: 245 },
-        { symbol: 'ADAUSD', name: 'Cardano/USD', category: 'crypto', currentPrice: 0.45 },
-        { symbol: 'SOLUSD', name: 'Solana/USD', category: 'crypto', currentPrice: 98 },
-        
-        // Stocks
-        { symbol: 'AAPL', name: 'Apple Inc.', category: 'stocks', currentPrice: 195.50 },
-        { symbol: 'TSLA', name: 'Tesla Inc.', category: 'stocks', currentPrice: 250.75 },
-        { symbol: 'GOOGL', name: 'Alphabet Inc.', category: 'stocks', currentPrice: 142.80 },
-        { symbol: 'MSFT', name: 'Microsoft Corp.', category: 'stocks', currentPrice: 378.90 },
-        { symbol: 'AMZN', name: 'Amazon.com Inc.', category: 'stocks', currentPrice: 155.20 },
-        
-        // Commodities
-        { symbol: 'GOLD', name: 'Gold', category: 'commodities', currentPrice: 2020.50 },
-        { symbol: 'SILVER', name: 'Silver', category: 'commodities', currentPrice: 24.85 },
-        { symbol: 'OIL', name: 'Crude Oil', category: 'commodities', currentPrice: 85.25 },
-        { symbol: 'GAS', name: 'Natural Gas', category: 'commodities', currentPrice: 3.45 }
-      ];
-
-      await Asset.insertMany(demoAssets);
-      logger.info('Demo assets initialized successfully');
-    }
-  } catch (error) {
-    logger.error('Asset initialization error:', error);
-  }
-};
-
-// Fallback API routes when database is not available
-app.get('/api/assets', async (req, res) => {
-  try {
-    let assets = await Asset.find({ isActive: true }).sort({ name: 1 });
-    
-    // If database fails, return simulated data
-    if (assets.length === 0) {
-      assets = [
-        { symbol: 'EURUSD', name: 'EUR/USD', category: 'forex', currentPrice: 1.0850, changePercent24h: 0.12 },
-        { symbol: 'GBPUSD', name: 'GBP/USD', category: 'forex', currentPrice: 1.2650, changePercent24h: -0.34 },
-        { symbol: 'BTCUSD', name: 'Bitcoin/USD', category: 'crypto', currentPrice: 65000, changePercent24h: 2.45 },
-        { symbol: 'ETHUSD', name: 'Ethereum/USD', category: 'crypto', currentPrice: 3200, changePercent24h: 1.89 },
-        { symbol: 'AAPL', name: 'Apple Inc.', category: 'stocks', currentPrice: 195.50, changePercent24h: 0.67 },
-        { symbol: 'TSLA', name: 'Tesla Inc.', category: 'stocks', currentPrice: 250.75, changePercent24h: -1.23 }
-      ];
-    }
-    
-    res.json(assets);
-  } catch (error) {
-    // Return simulated data if all else fails
-    res.json([
-      { symbol: 'EURUSD', name: 'EUR/USD', category: 'forex', currentPrice: 1.0850, changePercent24h: 0.12 },
-      { symbol: 'BTCUSD', name: 'Bitcoin/USD', category: 'crypto', currentPrice: 65000, changePercent24h: 2.45 }
-    ]);
-  }
-});
-// Create demo user
-const createDemoUser = async () => {
-  try {
-    const demoEmail = 'demo@trading.com';
-    const existingDemo = await User.findOne({ email: demoEmail });
-    
-    if (!existingDemo) {
-      const hashedPassword = await bcrypt.hash('demo123', 12);
-      const demoUser = new User({
-        email: demoEmail,
-        password: hashedPassword,
-        firstName: 'Demo',
-        lastName: 'User',
-        balance: 10000,
-        isVerified: true
-      });
-      
-      await demoUser.save();
-      logger.info('Demo user created: demo@trading.com / demo123');
-    }
-  } catch (error) {
-    logger.error('Demo user creation error:', error);
-  }
-};
-
 // Error handling
 app.use((error, req, res, next) => {
   logger.error('Unhandled error:', error);
@@ -785,7 +608,6 @@ app.use((error, req, res, next) => {
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
   server.close(() => {
-    mongoose.connection.close();
     process.exit(0);
   });
 });
@@ -793,13 +615,9 @@ process.on('SIGTERM', () => {
 // Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  logger.info(`🚀 Trading Platform Server running on port ${PORT}`);
+  logger.info(`🚀 ExpertTrade Server running on port ${PORT}`);
   logger.info(`📊 WebSocket server ready for real-time connections`);
-  
-  // Initialize demo data
-  initializeDemoAssets();
-  createDemoUser();
-  
+  logger.info(`💾 Running in IN-MEMORY mode (no database required)`);
   logger.info(`💼 Demo account: demo@trading.com / demo123`);
   logger.info(`🔗 Health check: http://localhost:${PORT}/api/health`);
 });
