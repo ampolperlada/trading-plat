@@ -31,7 +31,7 @@ export default function Home() {
             <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
               <FaChartLine className="text-white text-xl" />
             </div>
-            <h1 className="text-2xl font-bold text-white">TradePro</h1>
+<h1 className="text-2xl font-bold text-white">ExpertTrade</h1>
           </div>
           <div className="hidden md:flex space-x-8 text-gray-300">
             <a href="#features" className="hover:text-white transition-colors">Features</a>

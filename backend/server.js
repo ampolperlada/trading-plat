@@ -674,10 +674,10 @@ io.on('connection', (socket) => {
 });
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/trading_platform', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/trading_platform')
+
+
+
 .then(() => logger.info('Connected to MongoDB'))
 .catch(error => logger.error('MongoDB connection error:', error));
 
@@ -724,6 +724,32 @@ const initializeDemoAssets = async () => {
   }
 };
 
+// Fallback API routes when database is not available
+app.get('/api/assets', async (req, res) => {
+  try {
+    let assets = await Asset.find({ isActive: true }).sort({ name: 1 });
+    
+    // If database fails, return simulated data
+    if (assets.length === 0) {
+      assets = [
+        { symbol: 'EURUSD', name: 'EUR/USD', category: 'forex', currentPrice: 1.0850, changePercent24h: 0.12 },
+        { symbol: 'GBPUSD', name: 'GBP/USD', category: 'forex', currentPrice: 1.2650, changePercent24h: -0.34 },
+        { symbol: 'BTCUSD', name: 'Bitcoin/USD', category: 'crypto', currentPrice: 65000, changePercent24h: 2.45 },
+        { symbol: 'ETHUSD', name: 'Ethereum/USD', category: 'crypto', currentPrice: 3200, changePercent24h: 1.89 },
+        { symbol: 'AAPL', name: 'Apple Inc.', category: 'stocks', currentPrice: 195.50, changePercent24h: 0.67 },
+        { symbol: 'TSLA', name: 'Tesla Inc.', category: 'stocks', currentPrice: 250.75, changePercent24h: -1.23 }
+      ];
+    }
+    
+    res.json(assets);
+  } catch (error) {
+    // Return simulated data if all else fails
+    res.json([
+      { symbol: 'EURUSD', name: 'EUR/USD', category: 'forex', currentPrice: 1.0850, changePercent24h: 0.12 },
+      { symbol: 'BTCUSD', name: 'Bitcoin/USD', category: 'crypto', currentPrice: 65000, changePercent24h: 2.45 }
+    ]);
+  }
+});
 // Create demo user
 const createDemoUser = async () => {
   try {

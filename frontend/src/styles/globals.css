@@ -18,13 +18,8 @@ body {
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  color: rgb(255, 255, 255);
+  background: #111827;
 }
 
 a {
@@ -76,4 +71,66 @@ a {
 
 .trade-button-call:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+}
+
+.trade-button-put:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+/* Loading animations */
+.pulse-slow {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Chart styles */
+.chart-container {
+  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+  border: 1px solid #374151;
+}
+
+/* Toast customization */
+.Toastify__toast--dark {
+  background: #1f2937;
+  border: 1px solid #374151;
+}
+
+.Toastify__toast--success {
+  background: linear-gradient(135deg, #065f46, #047857);
+}
+
+.Toastify__toast--error {
+  background: linear-gradient(135deg, #7f1d1d, #991b1b);
+}
+
+/* Button hover effects */
+.btn-hover:hover {
+  transform: translateY(-1px);
+  transition: all 0.2s ease;
+}
+
+/* Asset list item hover */
+.asset-item:hover {
+  background: rgba(55, 65, 81, 0.5);
+  transform: translateX(2px);
+  transition: all 0.2s ease;
+}
+
+/* Connection status indicator */
+.status-connected {
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.status-disconnected {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+/* Responsive design helpers */
+@media (max-width: 768px) {
+  .mobile-hidden {
+    display: none;
+  }
+}
