@@ -1,4 +1,4 @@
-// frontend/src/contexts/MarketDataContext.js - Simple version to start
+// frontend/src/contexts/MarketDataContext.js
 import { createContext, useContext, useEffect, useState } from 'react';
 
 const MarketDataContext = createContext();
@@ -13,9 +13,9 @@ export function useMarketData() {
 
 export function MarketDataProvider({ children }) {
   const [marketData, setMarketData] = useState({});
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [connectionStatus, setConnectionStatus] = useState('connected');
 
-  // Mock data for now (we'll connect to real API later)
+  // Mock data for now
   useEffect(() => {
     const mockData = {
       'EURUSD': { price: 1.08501, change: -0.07, name: 'EUR/USD' },
@@ -31,7 +31,6 @@ export function MarketDataProvider({ children }) {
     };
 
     setMarketData(mockData);
-    setConnectionStatus('connected');
 
     // Update prices every 2 seconds
     const interval = setInterval(() => {

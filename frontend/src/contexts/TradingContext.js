@@ -1,6 +1,7 @@
-// frontend/src/contexts/TradingContext.js - Simple version to start
-import { createContext, useContext, useReducer, useEffect } from 'react';
+// frontend/src/contexts/TradingContext.js
+import { createContext, useContext, useReducer } from 'react';
 import { useAuth } from './AuthContext';
+import { useMarketData } from './MarketDataContext';
 
 const TradingContext = createContext();
 
@@ -33,8 +34,9 @@ const initialState = {
 export function TradingProvider({ children }) {
   const [state, dispatch] = useReducer(tradingReducer, initialState);
   const { user } = useAuth();
+  const { marketData } = useMarketData();
 
-  // Mock trade execution for now
+  // Mock trade execution
   const executeTrade = async (symbol, direction, amount, duration = 60) => {
     if (!user) {
       throw new Error('Please log in to trade');
@@ -43,13 +45,15 @@ export function TradingProvider({ children }) {
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
-      // Mock trade
+      // Get current price from market data
+      const currentPrice = marketData[symbol]?.price || Math.random() * 100;
+      
       const trade = {
         id: Date.now().toString(),
         symbol,
         direction,
         amount,
-        openPrice: Math.random() * 100,
+        openPrice: currentPrice,
         openTime: Date.now(),
         duration: duration * 1000,
         status: 'active'
@@ -60,6 +64,10 @@ export function TradingProvider({ children }) {
       // Auto-settle after duration
       setTimeout(() => {
         dispatch({ type: 'REMOVE_ACTIVE_TRADE', payload: trade.id });
+        
+        // Mock win/loss
+        const isWin = Math.random() > 0.5;
+        console.log(`Trade ${trade.id} ${isWin ? 'WON' : 'LOST'}`);
       }, trade.duration);
 
       return trade;
