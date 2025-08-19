@@ -1,4 +1,4 @@
-// frontend/src/pages/trading.js - Final Expert Option with Real Data
+// frontend/src/pages/trading.js - Simple Working Version
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useMarketData } from '../contexts/MarketDataContext';

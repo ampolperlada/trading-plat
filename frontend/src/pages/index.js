@@ -1,4 +1,4 @@
-// frontend/src/pages/index.js - Real Expert Option Landing Page
+// frontend/src/pages/index.js - Simple Working Version
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from 'next/router';
@@ -37,11 +37,11 @@ export default function HomePage() {
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50">
         <div className="flex items-center space-x-8">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">EO</span>
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-lg">EO</span>
             </div>
-            <span className="text-xl font-bold">ExpertOption</span>
+            <span className="text-2xl font-bold">ExpertOption</span>
           </div>
           <nav className="hidden md:flex space-x-6">
             <a href="#" className="text-gray-300 hover:text-white transition-colors">Trading</a>
@@ -51,18 +51,8 @@ export default function HomePage() {
           </nav>
         </div>
         <div className="flex items-center space-x-4">
-          <button 
-            onClick={() => setIsSignUp(false)}
-            className="text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            Login
-          </button>
-          <button 
-            onClick={() => setIsSignUp(true)}
-            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors"
-          >
-            Register
-          </button>
+          <button className="text-blue-400 hover:text-blue-300 transition-colors">Login</button>
+          <button className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors">Register</button>
         </div>
       </header>
 
@@ -86,51 +76,44 @@ export default function HomePage() {
             <div className="space-y-4">
               <div className="flex items-center space-x-3">
                 <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs">✓</span>
+                  <span className="text-white text-xs font-bold">✓</span>
                 </div>
                 <span className="text-gray-300">Real-time trading with instant execution</span>
               </div>
               <div className="flex items-center space-x-3">
                 <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs">✓</span>
+                  <span className="text-white text-xs font-bold">✓</span>
                 </div>
                 <span className="text-gray-300">AI-powered market analysis</span>
               </div>
               <div className="flex items-center space-x-3">
                 <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs">✓</span>
+                  <span className="text-white text-xs font-bold">✓</span>
                 </div>
                 <span className="text-gray-300">Up to 80% profit on successful trades</span>
               </div>
             </div>
 
-            {/* Asset Categories */}
+            {/* Trading Assets */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-white">Trading Assets</h3>
+              <h3 className="text-xl font-bold text-white">Trading Assets</h3>
               
-              <div className="space-y-2">
-                <div className="text-gray-300">
-                  <span className="text-blue-400 font-semibold">Stocks</span>
-                  <br />
-                  <span className="text-sm">Apple, Tesla, Google</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
+                  <div className="text-blue-400 font-semibold">📈 Stocks</div>
+                  <div className="text-sm text-gray-400">Apple, Tesla, Google</div>
                 </div>
-                
-                <div className="text-gray-300">
-                  <span className="text-blue-400 font-semibold">Forex</span>
-                  <br />
-                  <span className="text-sm">EUR/USD, GBP/USD</span>
+                <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
+                  <div className="text-blue-400 font-semibold">💱 Forex</div>
+                  <div className="text-sm text-gray-400">EUR/USD, GBP/USD</div>
                 </div>
-                
-                <div className="text-gray-300">
-                  <span className="text-blue-400 font-semibold">Crypto</span>
-                  <br />
-                  <span className="text-sm">Bitcoin, Ethereum</span>
+                <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
+                  <div className="text-blue-400 font-semibold">₿ Crypto</div>
+                  <div className="text-sm text-gray-400">Bitcoin, Ethereum</div>
                 </div>
-                
-                <div className="text-gray-300">
-                  <span className="text-blue-400 font-semibold">Commodities</span>
-                  <br />
-                  <span className="text-sm">Gold, Oil, Silver</span>
+                <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
+                  <div className="text-blue-400 font-semibold">🥇 Commodities</div>
+                  <div className="text-sm text-gray-400">Gold, Oil, Silver</div>
                 </div>
               </div>
             </div>
@@ -164,95 +147,68 @@ export default function HomePage() {
             </button>
           </div>
 
-          {/* Right Side - Login/Register Form */}
-          <div className="relative">
-            <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50 shadow-2xl">
-              <div className="space-y-6">
-                <div className="text-center">
-                  <h2 className="text-2xl font-bold text-white mb-2">Welcome Back</h2>
-                  <p className="text-gray-400">Sign in to your trading account</p>
+          {/* Right Side - Phone Mockup */}
+          <div className="relative flex justify-center">
+            <div className="w-80 h-96 bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-700/50">
+              {/* Phone Screen */}
+              <div className="bg-slate-900 rounded-2xl h-full p-4 relative">
+                {/* Red Badge */}
+                <div className="absolute top-4 right-4 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">T</span>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {isSignUp && (
+                {/* Asset Categories */}
+                <div className="space-y-3 mt-8">
+                  <div className="text-xs text-gray-400 mb-4">Asset list</div>
+                  
+                  <div className="space-y-2">
+                    <div className="bg-blue-600 px-3 py-2 rounded-lg text-center text-xs font-semibold text-white">
+                      Stocks
+                    </div>
+                    <div className="bg-slate-700 px-3 py-2 rounded-lg text-center text-xs font-semibold text-gray-300">
+                      Indices
+                    </div>
+                    <div className="bg-slate-700 px-3 py-2 rounded-lg text-center text-xs font-semibold text-gray-300">
+                      Metals
+                    </div>
+                    <div className="bg-slate-700 px-3 py-2 rounded-lg text-center text-xs font-semibold text-gray-300">
+                      Commodities
+                    </div>
+                    <div className="bg-slate-700 px-3 py-2 rounded-lg text-center text-xs font-semibold text-gray-300">
+                      ETF
+                    </div>
+                  </div>
+                </div>
+
+                {/* Asset List */}
+                <div className="space-y-2 mt-6">
+                  <div className="flex justify-between items-center p-2 bg-slate-800/50 rounded text-xs">
                     <div>
-                      <input
-                        type="text"
-                        placeholder="Full Name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none transition-colors"
-                        required
-                      />
+                      <div className="text-white font-medium">Apple</div>
+                      <div className="text-gray-400">AAPL</div>
                     </div>
-                  )}
-                  
-                  <div>
-                    <input
-                      type="email"
-                      placeholder="Email Address"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none transition-colors"
-                      required
-                    />
+                    <div className="text-red-400 font-semibold">-0.87%</div>
                   </div>
-                  
-                  <div>
-                    <input
-                      type="password"
-                      placeholder="Password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none transition-colors"
-                      required
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white py-3 rounded-lg font-semibold transition-all duration-200 disabled:opacity-50"
-                  >
-                    {isLoading ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
-                  </button>
-                </form>
-
-                <div className="text-center">
-                  <button
-                    onClick={() => setIsSignUp(!isSignUp)}
-                    className="text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    {isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign up"}
-                  </button>
-                </div>
-
-                {/* Demo Account Section */}
-                <div className="border-t border-slate-600 pt-6 space-y-4">
-                  <h3 className="text-lg font-semibold text-white text-center">Try Demo Account:</h3>
-                  
-                  <div className="bg-slate-700/30 rounded-lg p-4 space-y-2">
-                    <div className="flex items-center justify-center space-x-2">
-                      <span className="text-blue-400">📧</span>
-                      <span className="text-white font-mono text-sm">demo@trading.com</span>
+                  <div className="flex justify-between items-center p-2 bg-slate-800/50 rounded text-xs">
+                    <div>
+                      <div className="text-white font-medium">Tesla</div>
+                      <div className="text-gray-400">TSLA</div>
                     </div>
-                    <div className="flex items-center justify-center space-x-2">
-                      <span className="text-blue-400">🔑</span>
-                      <span className="text-white font-mono text-sm">demo123</span>
-                    </div>
+                    <div className="text-green-400 font-semibold">+0.02%</div>
                   </div>
-                  
-                  <div className="text-center">
-                    <div className="text-green-400 font-bold mb-4">$10,000 virtual balance included!</div>
-                    
-                    <button
-                      onClick={handleDemoLogin}
-                      className="w-full bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white py-3 rounded-lg font-semibold transition-all duration-200"
-                    >
-                      Start Demo Trading
-                    </button>
+                  <div className="flex justify-between items-center p-2 bg-slate-800/50 rounded text-xs">
+                    <div>
+                      <div className="text-white font-medium">Google</div>
+                      <div className="text-gray-400">GOOGL</div>
+                    </div>
+                    <div className="text-green-400 font-semibold">+0.15%</div>
                   </div>
                 </div>
+              </div>
+
+              {/* IBM Badge */}
+              <div className="absolute bottom-4 right-4 bg-blue-600 px-2 py-1 rounded text-white text-xs font-bold">
+                IBM
               </div>
             </div>
 
@@ -266,73 +222,48 @@ export default function HomePage() {
         </div>
 
         {/* Stats Section */}
-        <div className="mt-24 grid md:grid-cols-4 gap-8 text-center">
-          {[
-            { number: '100+', label: 'Trading Assets' },
-            { number: '80%', label: 'Max Profit' },
-            { number: '24/7', label: 'Market Access' },
-            { number: '1M+', label: 'Traders Trust Us' }
-          ].map((stat, i) => (
-            <div key={i} className="bg-slate-800/50 rounded-lg p-6 border border-slate-700/50">
-              <div className="text-3xl font-bold text-blue-400 mb-2">{stat.number}</div>
-              <div className="text-gray-400">{stat.label}</div>
+        <div className="mt-24 grid md:grid-cols-4 gap-8">
+          <div className="text-center bg-slate-800/50 rounded-lg p-6 border border-slate-700/50">
+            <div className="text-3xl font-bold text-blue-400 mb-2">100+</div>
+            <div className="text-gray-400">Trading Assets</div>
+          </div>
+          <div className="text-center bg-slate-800/50 rounded-lg p-6 border border-slate-700/50">
+            <div className="text-3xl font-bold text-blue-400 mb-2">80%</div>
+            <div className="text-gray-400">Max Profit</div>
+          </div>
+          <div className="text-center bg-slate-800/50 rounded-lg p-6 border border-slate-700/50">
+            <div className="text-3xl font-bold text-blue-400 mb-2">24/7</div>
+            <div className="text-gray-400">Market Access</div>
+          </div>
+          <div className="text-center bg-slate-800/50 rounded-lg p-6 border border-slate-700/50">
+            <div className="text-3xl font-bold text-blue-400 mb-2">1M+</div>
+            <div className="text-gray-400">Traders Trust Us</div>
+          </div>
+        </div>
+
+        {/* Demo Account Section */}
+        <div className="mt-16 max-w-md mx-auto bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl p-8 border border-slate-700/50">
+          <h3 className="text-xl font-bold text-white mb-6 text-center">Try Demo Account:</h3>
+          
+          <div className="space-y-4 mb-6">
+            <div className="flex items-center justify-center space-x-2 bg-slate-700/30 rounded-lg p-3">
+              <span className="text-blue-400">📧</span>
+              <span className="text-white font-mono">demo@trading.com</span>
             </div>
-          ))}
-        </div>
-
-        {/* Features Section */}
-        <div className="mt-24">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">For All Devices</h2>
+            <div className="flex items-center justify-center space-x-2 bg-slate-700/30 rounded-lg p-3">
+              <span className="text-blue-400">🔑</span>
+              <span className="text-white font-mono">demo123</span>
+            </div>
           </div>
           
-          <div className="grid md:grid-cols-4 gap-8">
-            {[
-              { name: 'Android', subtitle: 'All and tablet', icon: '📱' },
-              { name: 'iOS', subtitle: 'All and tablet', icon: '🍎' },
-              { name: 'Windows', subtitle: 'All platforms', icon: '🖥️' },
-              { name: 'MacOS', subtitle: 'All software', icon: '💻' }
-            ].map((device, i) => (
-              <div key={i} className="text-center bg-slate-800/30 rounded-lg p-6 border border-slate-700/50 hover:border-blue-500/50 transition-colors">
-                <div className="text-4xl mb-4">{device.icon}</div>
-                <h3 className="text-white font-bold text-lg mb-2">{device.name}</h3>
-                <p className="text-gray-400">{device.subtitle}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* How It Works */}
-        <div className="mt-24">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">How It Works</h2>
-          </div>
+          <div className="text-green-400 font-bold text-center mb-6">$10,000 virtual balance included!</div>
           
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                title: 'Deposit',
-                description: 'Open a real account and add funds. We work with more than 20 payment systems.',
-                icon: '💳'
-              },
-              {
-                title: 'Trade',
-                description: 'Trade any of 100 assets and stocks. Use technical analysis and trade the news.',
-                icon: '📈'
-              },
-              {
-                title: 'Withdraw',
-                description: 'Get funds easily to your bank card or e-wallet. We have no commissions.',
-                icon: '💰'
-              }
-            ].map((step, i) => (
-              <div key={i} className="text-center bg-slate-800/30 rounded-lg p-8 border border-slate-700/50">
-                <div className="text-5xl mb-6">{step.icon}</div>
-                <h3 className="text-white font-bold text-xl mb-4">{step.title}</h3>
-                <p className="text-gray-400 leading-relaxed">{step.description}</p>
-              </div>
-            ))}
-          </div>
+          <button 
+            onClick={handleDemoLogin}
+            className="w-full bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white py-4 rounded-xl font-bold text-lg transition-all duration-300 hover:scale-105"
+          >
+            Start Demo Trading
+          </button>
         </div>
       </div>
     </div>
