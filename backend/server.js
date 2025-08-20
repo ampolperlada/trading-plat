@@ -218,6 +218,59 @@ if (useDatabase) {
     accountType: 'demo'
   };
 
+  // Add this to your backend/server.js after the health route
+
+// Simple trades endpoint for testing
+app.post('/api/trades', async (req, res) => {
+  try {
+    const { asset, tradeType, amount, duration } = req.body;
+    
+    // Simple validation
+    if (!asset || !tradeType || !amount || !duration) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (!['CALL', 'PUT'].includes(tradeType)) {
+      return res.status(400).json({ error: 'Invalid trade type' });
+    }
+
+    // Mock trade response (since we're in simple mode)
+    const trade = {
+      _id: 'trade_' + Date.now(),
+      asset,
+      tradeType,
+      amount,
+      duration,
+      openPrice: Math.random() * 1000 + 100, // Random price
+      openTime: new Date(),
+      result: 'pending'
+    };
+
+    res.json(trade);
+  } catch (error) {
+    console.error('Trade error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Assets endpoint
+app.get('/api/assets', (req, res) => {
+  const mockAssets = [
+    { symbol: 'EURUSD', name: 'Euro/US Dollar', category: 'forex', currentPrice: 1.09511, payout: 0.8 },
+    { symbol: 'GBPUSD', name: 'British Pound/US Dollar', category: 'forex', currentPrice: 1.25481, payout: 0.8 },
+    { symbol: 'USDJPY', name: 'US Dollar/Japanese Yen', category: 'forex', currentPrice: 150.58037, payout: 0.8 },
+    { symbol: 'BTCUSD', name: 'Bitcoin/US Dollar', category: 'crypto', currentPrice: 66104.38534, payout: 0.85 },
+    { symbol: 'ETHUSD', name: 'Ethereum/US Dollar', category: 'crypto', currentPrice: 3124.27865, payout: 0.85 },
+    { symbol: 'AAPL', name: 'Apple Inc', category: 'stocks', currentPrice: 156.61687, payout: 0.8 },
+    { symbol: 'TSLA', name: 'Tesla Inc', category: 'stocks', currentPrice: 250.87927, payout: 0.8 },
+    { symbol: 'GOOGL', name: 'Alphabet Inc', category: 'stocks', currentPrice: 143.61676, payout: 0.8 },
+    { symbol: 'GOLD', name: 'Gold', category: 'commodities', currentPrice: 2028.15778, payout: 0.8 },
+    { symbol: 'OIL', name: 'Crude Oil', category: 'commodities', currentPrice: 85.33382, payout: 0.8 }
+  ];
+
+  res.json(mockAssets);
+});
+
   // Simple auth
   app.post('/api/auth/login', (req, res) => {
     try {
