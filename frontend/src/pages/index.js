@@ -1,34 +1,54 @@
-// frontend/src/pages/index.js - Simple Working Version
 import { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from 'next/router';
+import { api } from '../utils/api';
 
-export default function HomePage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [name, setName] = useState('');
-  const { login, register, isLoading } = useAuth();
+export default function AuthPage() {
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
+    setIsLoading(true);
+    
+    const email = e.target.email.value;
+    const password = e.target.password.value;
+    
     try {
-      if (isSignUp) {
-        await register({ email, password, name });
+      const result = await api.login(email, password);
+      
+      if (result.token) {
+        localStorage.setItem('token', result.token);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        alert('Login successful!');
+        router.push('/trading');
       } else {
-        await login(email, password);
+        alert('Login failed: ' + result.error);
       }
     } catch (error) {
-      console.error('Auth error:', error);
+      console.error('Login error:', error);
+      alert('Login failed');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleDemoLogin = async () => {
+    setIsLoading(true);
     try {
-      await login('demo@trading.com', 'demo123');
+      const result = await api.login('demo@trading.com', 'demo123');
+      if (result.token) {
+        localStorage.setItem('token', result.token);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        alert('Demo login successful!');
+        router.push('/trading');
+      } else {
+        alert('Demo login failed: ' + result.error);
+      }
     } catch (error) {
       console.error('Demo login error:', error);
+      alert('Demo login failed. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -72,6 +92,41 @@ export default function HomePage() {
               </p>
             </div>
 
+            {/* Login Form */}
+            <div className="max-w-md bg-slate-800/50 rounded-2xl p-8 border border-slate-700/50">
+              <h3 className="text-xl font-bold text-white mb-6 text-center">Login to Your Account</h3>
+              <form onSubmit={handleLogin} className="space-y-4">
+                <input 
+                  name="email" 
+                  type="email" 
+                  defaultValue="demo@trading.com"
+                  placeholder="Email"
+                  className="w-full bg-slate-700/50 text-white border border-slate-600 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <input 
+                  name="password" 
+                  type="password" 
+                  defaultValue="demo123"
+                  placeholder="Password"
+                  className="w-full bg-slate-700/50 text-white border border-slate-600 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <button 
+                  type="submit" 
+                  disabled={isLoading}
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white py-3 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 disabled:opacity-50"
+                >
+                  {isLoading ? 'Logging in...' : 'Login'}
+                </button>
+              </form>
+              
+              {/* Demo credentials helper */}
+              <div className="text-center mt-4 text-slate-400">
+                <p>Demo login: demo@trading.com / demo123</p>
+              </div>
+            </div>
+
             {/* Features List */}
             <div className="space-y-4">
               <div className="flex items-center space-x-3">
@@ -97,7 +152,6 @@ export default function HomePage() {
             {/* Trading Assets */}
             <div className="space-y-4">
               <h3 className="text-xl font-bold text-white">Trading Assets</h3>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
                   <div className="text-blue-400 font-semibold">📈 Stocks</div>
@@ -150,17 +204,12 @@ export default function HomePage() {
           {/* Right Side - Phone Mockup */}
           <div className="relative flex justify-center">
             <div className="w-80 h-96 bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-700/50">
-              {/* Phone Screen */}
               <div className="bg-slate-900 rounded-2xl h-full p-4 relative">
-                {/* Red Badge */}
                 <div className="absolute top-4 right-4 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
                   <span className="text-white text-xs font-bold">T</span>
                 </div>
-
-                {/* Asset Categories */}
                 <div className="space-y-3 mt-8">
                   <div className="text-xs text-gray-400 mb-4">Asset list</div>
-                  
                   <div className="space-y-2">
                     <div className="bg-blue-600 px-3 py-2 rounded-lg text-center text-xs font-semibold text-white">
                       Stocks
@@ -179,8 +228,6 @@ export default function HomePage() {
                     </div>
                   </div>
                 </div>
-
-                {/* Asset List */}
                 <div className="space-y-2 mt-6">
                   <div className="flex justify-between items-center p-2 bg-slate-800/50 rounded text-xs">
                     <div>
@@ -205,14 +252,10 @@ export default function HomePage() {
                   </div>
                 </div>
               </div>
-
-              {/* IBM Badge */}
               <div className="absolute bottom-4 right-4 bg-blue-600 px-2 py-1 rounded text-white text-xs font-bold">
                 IBM
               </div>
             </div>
-
-            {/* Floating Elements */}
             <div className="absolute -top-4 -right-4 w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center shadow-lg animate-pulse">
               <span className="text-white font-bold">T</span>
             </div>
@@ -244,7 +287,6 @@ export default function HomePage() {
         {/* Demo Account Section */}
         <div className="mt-16 max-w-md mx-auto bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl p-8 border border-slate-700/50">
           <h3 className="text-xl font-bold text-white mb-6 text-center">Try Demo Account:</h3>
-          
           <div className="space-y-4 mb-6">
             <div className="flex items-center justify-center space-x-2 bg-slate-700/30 rounded-lg p-3">
               <span className="text-blue-400">📧</span>
@@ -255,14 +297,13 @@ export default function HomePage() {
               <span className="text-white font-mono">demo123</span>
             </div>
           </div>
-          
           <div className="text-green-400 font-bold text-center mb-6">$10,000 virtual balance included!</div>
-          
           <button 
             onClick={handleDemoLogin}
             className="w-full bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white py-4 rounded-xl font-bold text-lg transition-all duration-300 hover:scale-105"
+            disabled={isLoading}
           >
-            Start Demo Trading
+            {isLoading ? 'Logging in...' : 'Start Demo Trading'}
           </button>
         </div>
       </div>
