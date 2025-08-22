@@ -3,6 +3,70 @@ import { Play, Smartphone, Monitor, Tablet, Apple, ChevronRight, Shield, Trendin
 
 export default function ExpertOptionLandingPage() {
   const [email, setEmail] = useState('');
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [loginData, setLoginData] = useState({ email: '', password: '' });
+  const [registerData, setRegisterData] = useState({ 
+    firstName: '', 
+    lastName: '', 
+    email: '', 
+    password: '',
+    country: 'US'
+  });
+
+  // Handle Try Free Demo
+  const handleTryDemo = () => {
+    // Redirect to trading dashboard
+    window.location.href = '/trading-dashboard';
+  };
+
+  // Handle Login
+  const handleLogin = () => {
+    if (loginData.email && loginData.password) {
+      // Store user data
+      localStorage.setItem('user', JSON.stringify({
+        email: loginData.email,
+        balance: 10000,
+        accountType: 'Demo'
+      }));
+      localStorage.setItem('token', 'demo-token-' + Date.now());
+      
+      alert('Login successful! Redirecting to trading dashboard...');
+      setShowLoginModal(false);
+      
+      // Redirect to trading dashboard
+      setTimeout(() => {
+        window.location.href = '/trading-dashboard';
+      }, 1000);
+    } else {
+      alert('Please fill in all fields');
+    }
+  };
+
+  // Handle Registration
+  const handleRegister = () => {
+    if (registerData.email && registerData.password && registerData.firstName && registerData.lastName) {
+      // Store user data
+      localStorage.setItem('user', JSON.stringify({
+        email: registerData.email,
+        firstName: registerData.firstName,
+        lastName: registerData.lastName,
+        balance: 10000,
+        accountType: 'Demo'
+      }));
+      localStorage.setItem('token', 'demo-token-' + Date.now());
+      
+      alert('Registration successful! Welcome to ExpertOption!');
+      setShowRegisterModal(false);
+      
+      // Redirect to trading dashboard
+      setTimeout(() => {
+        window.location.href = '/trading-dashboard';
+      }, 1000);
+    } else {
+      alert('Please fill in all fields');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-slate-900 to-black text-white">
@@ -23,8 +87,16 @@ export default function ExpertOptionLandingPage() {
           </nav>
         </div>
         <div className="flex items-center space-x-4">
-          <button className="text-blue-400 hover:text-blue-300 transition">Login</button>
-          <button className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold transition">
+          <button 
+            onClick={() => setShowLoginModal(true)}
+            className="text-blue-400 hover:text-blue-300 transition"
+          >
+            Login
+          </button>
+          <button 
+            onClick={() => setShowRegisterModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold transition"
+          >
             Register
           </button>
         </div>
@@ -57,7 +129,10 @@ export default function ExpertOptionLandingPage() {
               </div>
             </div>
 
-            <button className="bg-blue-600 hover:bg-blue-700 px-8 py-4 rounded-lg font-bold text-lg transition flex items-center space-x-2">
+            <button 
+              onClick={handleTryDemo}
+              className="bg-blue-600 hover:bg-blue-700 px-8 py-4 rounded-lg font-bold text-lg transition flex items-center space-x-2"
+            >
               <span>Try free demo</span>
               <ChevronRight className="w-5 h-5" />
             </button>
@@ -240,7 +315,10 @@ export default function ExpertOptionLandingPage() {
                 worldwide.
               </p>
               
-              <button className="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg font-semibold transition">
+              <button 
+                onClick={handleTryDemo}
+                className="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg font-semibold transition"
+              >
                 See more
               </button>
             </div>
@@ -398,6 +476,160 @@ export default function ExpertOptionLandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl p-8 w-full max-w-md border border-slate-700">
+            <div className="text-center mb-6">
+              <h3 className="text-2xl font-bold mb-2">Login to Your Account</h3>
+              <p className="text-gray-400">Welcome back to ExpertOption</p>
+            </div>
+
+            <div className="space-y-4">
+              <input
+                type="email"
+                placeholder="Email Address"
+                value={loginData.email}
+                onChange={(e) => setLoginData({...loginData, email: e.target.value})}
+                className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+              />
+              
+              <input
+                type="password"
+                placeholder="Password"
+                value={loginData.password}
+                onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+                className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+              />
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleLogin}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-bold transition"
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => setShowLoginModal(false)}
+                  className="flex-1 bg-slate-600 hover:bg-slate-700 py-3 rounded-lg font-bold transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            <div className="text-center mt-6">
+              <button 
+                onClick={() => {
+                  setShowLoginModal(false);
+                  setShowRegisterModal(true);
+                }}
+                className="text-blue-400 hover:text-blue-300 text-sm"
+              >
+                Don't have an account? Register here
+              </button>
+            </div>
+
+            <div className="bg-slate-700/50 rounded-lg p-3 mt-6 text-center">
+              <p className="text-sm font-semibold text-gray-300 mb-1">Demo Login:</p>
+              <p className="text-xs text-gray-400">
+                Use any email and password<br />
+                Virtual Balance: $10,000
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Register Modal */}
+      {showRegisterModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl p-8 w-full max-w-md border border-slate-700">
+            <div className="text-center mb-6">
+              <h3 className="text-2xl font-bold mb-2">Create Your Account</h3>
+              <p className="text-gray-400">Join ExpertOption today</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder="First Name"
+                  value={registerData.firstName}
+                  onChange={(e) => setRegisterData({...registerData, firstName: e.target.value})}
+                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Last Name"
+                  value={registerData.lastName}
+                  onChange={(e) => setRegisterData({...registerData, lastName: e.target.value})}
+                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <input
+                type="email"
+                placeholder="Email Address"
+                value={registerData.email}
+                onChange={(e) => setRegisterData({...registerData, email: e.target.value})}
+                className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+              />
+              
+              <input
+                type="password"
+                placeholder="Password"
+                value={registerData.password}
+                onChange={(e) => setRegisterData({...registerData, password: e.target.value})}
+                className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+              />
+
+              <select
+                value={registerData.country}
+                onChange={(e) => setRegisterData({...registerData, country: e.target.value})}
+                className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+              >
+                <option value="US">United States</option>
+                <option value="UK">United Kingdom</option>
+                <option value="CA">Canada</option>
+                <option value="AU">Australia</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="JP">Japan</option>
+                <option value="Other">Other</option>
+              </select>
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleRegister}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-bold transition"
+                >
+                  Create Account
+                </button>
+                <button
+                  onClick={() => setShowRegisterModal(false)}
+                  className="flex-1 bg-slate-600 hover:bg-slate-700 py-3 rounded-lg font-bold transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            <div className="text-center mt-6">
+              <button 
+                onClick={() => {
+                  setShowRegisterModal(false);
+                  setShowLoginModal(true);
+                }}
+                className="text-blue-400 hover:text-blue-300 text-sm"
+              >
+                Already have an account? Login here
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
