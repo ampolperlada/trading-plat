@@ -17,7 +17,7 @@ export const api = {
     return response.json();
   },
 
-  // Add registration function
+  // Registration
   register: async (userData) => {
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
       method: 'POST',
