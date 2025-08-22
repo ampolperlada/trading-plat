@@ -393,6 +393,76 @@ if (useDatabase && errorHandler) {
   });
 }
 
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password, firstName, lastName } = req.body;
+    
+    // For now, just create a simple demo response
+    const user = {
+      id: Date.now(),
+      email,
+      firstName: firstName || 'Demo',
+      lastName: lastName || 'User',
+      balance: 10000,
+      accountType: 'demo'
+    };
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+
+    res.json({ token, user });
+  } catch (error) {
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, country } = req.body;
+    
+    // Basic validation
+    if (!email || !password || !firstName || !lastName) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Create user (in simple mode, just return demo response)
+    const user = {
+      id: Date.now(),
+      email: email.toLowerCase(),
+      firstName,
+      lastName,
+      country: country || 'US',
+      balance: 10000,
+      accountType: 'demo',
+      totalProfit: 0,
+      totalTrades: 0,
+      winRate: 0
+    };
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+
+    res.status(201).json({
+      token,
+      user
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
