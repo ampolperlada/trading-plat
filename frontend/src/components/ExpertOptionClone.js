@@ -1,635 +1,732 @@
-import { useState } from 'react';
-import { Play, Smartphone, Monitor, Tablet, Apple, ChevronRight, Shield, TrendingUp, Download, Globe, Star } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import { TrendingUp, TrendingDown, History, User, LogOut, Plus, Minus } from 'lucide-react';
 
-export default function ExpertOptionLandingPage() {
-  const [email, setEmail] = useState('');
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [loginData, setLoginData] = useState({ email: '', password: '' });
-  const [registerData, setRegisterData] = useState({ 
-    firstName: '', 
-    lastName: '', 
-    email: '', 
-    password: '',
-    country: 'US'
-  });
+const ExpertOptionTradingDashboard = () => {
+  // Authentication State
+  const [user, setUser] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showLogin, setShowLogin] = useState(true);
+  const [loginData, setLoginData] = useState({ email: 'demo@trading.com', password: 'demo123' });
 
-  // Handle Try Free Demo
-  const handleTryDemo = () => {
-    // Redirect to trading dashboard
-    window.location.href = '/trading-dashboard';
-  };
+  // Trading State
+  const [selectedAsset, setSelectedAsset] = useState('EURUSD');
+  const [tradeAmount, setTradeAmount] = useState(10);
+  const [selectedTime, setSelectedTime] = useState(60);
+  const [activeTrades, setActiveTrades] = useState([]);
+  const [tradeHistory, setTradeHistory] = useState([]);
+  const [prices, setPrices] = useState({});
+  const [chartData, setChartData] = useState([]);
+  
+  // UI State
+  const [notifications, setNotifications] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
-  // Handle Login
-  const handleLogin = () => {
-    if (loginData.email && loginData.password) {
-      // Store user data
-      localStorage.setItem('user', JSON.stringify({
-        email: loginData.email,
-        balance: 10000,
-        accountType: 'Demo'
-      }));
-      localStorage.setItem('token', 'demo-token-' + Date.now());
-      
-      alert('Login successful! Redirecting to trading dashboard...');
-      setShowLoginModal(false);
-      
-      // Redirect to trading dashboard
-      setTimeout(() => {
-        window.location.href = '/trading-dashboard';
-      }, 1000);
-    } else {
-      alert('Please fill in all fields');
+  // Assets Data
+  const assets = [
+    { symbol: 'EURUSD', name: 'EUR/USD', type: 'forex', basePrice: 1.0856, icon: '💱' },
+    { symbol: 'GBPUSD', name: 'GBP/USD', type: 'forex', basePrice: 1.2634, icon: '💱' },
+    { symbol: 'USDJPY', name: 'USD/JPY', type: 'forex', basePrice: 149.23, icon: '💱' },
+    { symbol: 'BTCUSD', name: 'Bitcoin', type: 'crypto', basePrice: 43247.89, icon: '₿' },
+    { symbol: 'ETHUSD', name: 'Ethereum', type: 'crypto', basePrice: 2634.56, icon: 'Ξ' },
+    { symbol: 'AAPL', name: 'Apple Inc', type: 'stocks', basePrice: 189.47, icon: '🍎' },
+    { symbol: 'TSLA', name: 'Tesla Inc', type: 'stocks', basePrice: 248.91, icon: '🚗' },
+    { symbol: 'GOOGL', name: 'Google', type: 'stocks', basePrice: 138.21, icon: '🔍' },
+    { symbol: 'GOLD', name: 'Gold', type: 'commodities', basePrice: 2087.45, icon: '🥇' },
+    { symbol: 'OIL', name: 'Oil', type: 'commodities', basePrice: 85.24, icon: '🛢️' }
+  ];
+
+  const timeOptions = [
+    { value: 15, label: '15s' },
+    { value: 30, label: '30s' },
+    { value: 60, label: '1m' },
+    { value: 300, label: '5m' },
+    { value: 900, label: '15m' },
+    { value: 1800, label: '30m' }
+  ];
+
+  // Initialize prices and check for existing user
+  useEffect(() => {
+    // Check if user is already logged in
+    const savedUser = localStorage.getItem('user');
+    const savedToken = localStorage.getItem('token');
+    
+    if (savedUser && savedToken) {
+      setUser(JSON.parse(savedUser));
+      setIsLoggedIn(true);
+      setShowLogin(false);
+      addNotification('Welcome back!', 'success');
     }
+
+    // Initialize prices
+    const initialPrices = {};
+    assets.forEach(asset => {
+      initialPrices[asset.symbol] = {
+        price: asset.basePrice,
+        change: (Math.random() - 0.5) * 2,
+        volume: Math.random() * 1000000
+      };
+    });
+    setPrices(initialPrices);
+    
+    generateChartData();
+  }, []);
+
+  // Real-time price updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPrices(prev => {
+        const newPrices = { ...prev };
+        assets.forEach(asset => {
+          const currentPrice = prev[asset.symbol]?.price || asset.basePrice;
+          const variation = (Math.random() - 0.5) * 0.002;
+          const newPrice = Math.max(0.001, currentPrice * (1 + variation));
+          const change = ((newPrice - asset.basePrice) / asset.basePrice) * 100;
+          
+          newPrices[asset.symbol] = {
+            price: newPrice,
+            change: change,
+            volume: Math.random() * 1000000,
+            timestamp: Date.now()
+          };
+        });
+        return newPrices;
+      });
+
+      // Update chart data
+      updateChartData();
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [selectedAsset]);
+
+  // Check for trade settlements
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveTrades(prevTrades => {
+        return prevTrades.map(trade => {
+          if (!trade.settled && Date.now() >= trade.expirationTime) {
+            return settleTrade(trade);
+          }
+          return trade;
+        }).filter(trade => !trade.settled);
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [prices]);
+
+  const generateChartData = () => {
+    const data = [];
+    const asset = assets.find(a => a.symbol === selectedAsset);
+    let price = asset?.basePrice || 1.0856;
+    
+    for (let i = 0; i < 50; i++) {
+      const variation = (Math.random() - 0.5) * 0.001;
+      price = price * (1 + variation);
+      data.push({
+        time: Date.now() - (50 - i) * 60000,
+        price: price,
+        volume: Math.random() * 100000
+      });
+    }
+    setChartData(data);
   };
 
-  // Handle Registration
-  const handleRegister = () => {
-    if (registerData.email && registerData.password && registerData.firstName && registerData.lastName) {
-      // Store user data
-      localStorage.setItem('user', JSON.stringify({
-        email: registerData.email,
-        firstName: registerData.firstName,
-        lastName: registerData.lastName,
-        balance: 10000,
-        accountType: 'Demo'
-      }));
-      localStorage.setItem('token', 'demo-token-' + Date.now());
-      
-      alert('Registration successful! Welcome to ExpertOption!');
-      setShowRegisterModal(false);
-      
-      // Redirect to trading dashboard
-      setTimeout(() => {
-        window.location.href = '/trading-dashboard';
-      }, 1000);
-    } else {
-      alert('Please fill in all fields');
-    }
+  const updateChartData = () => {
+    const currentPrice = prices[selectedAsset]?.price;
+    if (!currentPrice) return;
+
+    setChartData(prev => {
+      const newData = [...prev];
+      newData.push({
+        time: Date.now(),
+        price: currentPrice,
+        volume: Math.random() * 100000
+      });
+      return newData.slice(-50);
+    });
   };
+
+  const addNotification = (message, type = 'info') => {
+    const notification = {
+      id: Date.now(),
+      message,
+      type,
+      timestamp: Date.now()
+    };
+    
+    setNotifications(prev => [notification, ...prev.slice(0, 4)]);
+    
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== notification.id));
+    }, 5000);
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    
+    // Demo login (works with any credentials)
+    const userData = {
+      id: Date.now(),
+      email: loginData.email,
+      name: loginData.email.split('@')[0],
+      balance: 10000,
+      accountType: 'Demo',
+      joinedDate: new Date().toISOString()
+    };
+    
+    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('token', 'demo-token-' + Date.now());
+    
+    setUser(userData);
+    setIsLoggedIn(true);
+    setShowLogin(false);
+    addNotification(`Welcome ${userData.name}!`, 'success');
+  };
+
+  const placeTrade = (direction) => {
+    if (!isLoggedIn) {
+      addNotification('Please login to trade', 'error');
+      return;
+    }
+    
+    if (user.balance < tradeAmount) {
+      addNotification('Insufficient balance', 'error');
+      return;
+    }
+    
+    const currentPrice = prices[selectedAsset]?.price;
+    if (!currentPrice) {
+      addNotification('Price data unavailable', 'error');
+      return;
+    }
+    
+    const trade = {
+      id: Date.now(),
+      asset: selectedAsset,
+      direction: direction,
+      amount: tradeAmount,
+      entryPrice: currentPrice,
+      openTime: Date.now(),
+      expirationTime: Date.now() + (selectedTime * 1000),
+      duration: selectedTime,
+      settled: false,
+      payout: tradeAmount * 1.8 // 80% payout
+    };
+    
+    // Deduct trade amount from balance
+    const newBalance = user.balance - tradeAmount;
+    const updatedUser = { ...user, balance: newBalance };
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    
+    setActiveTrades(prev => [...prev, trade]);
+    addNotification(`${direction} trade placed on ${selectedAsset} - $${tradeAmount}`, 'info');
+  };
+
+  const settleTrade = (trade) => {
+    const currentPrice = prices[trade.asset]?.price || trade.entryPrice;
+    const priceChange = currentPrice - trade.entryPrice;
+    
+    let won = false;
+    if (trade.direction === 'CALL' && priceChange > 0) won = true;
+    if (trade.direction === 'PUT' && priceChange < 0) won = true;
+    
+    const settledTrade = {
+      ...trade,
+      settled: true,
+      won: won,
+      closePrice: currentPrice,
+      profit: won ? trade.payout - trade.amount : -trade.amount,
+      closeTime: Date.now()
+    };
+    
+    // Update balance if won
+    if (won) {
+      const newBalance = user.balance + trade.payout;
+      const updatedUser = { ...user, balance: newBalance };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      addNotification(`Trade WON! +$${(trade.payout - trade.amount).toFixed(2)}`, 'success');
+    } else {
+      addNotification(`Trade LOST -$${trade.amount}`, 'error');
+    }
+    
+    setTradeHistory(prev => [settledTrade, ...prev]);
+    return settledTrade;
+  };
+
+  const formatPrice = (symbol, price) => {
+    const asset = assets.find(a => a.symbol === symbol);
+    if (asset?.type === 'crypto') return price.toFixed(2);
+    if (symbol === 'USDJPY') return price.toFixed(3);
+    return price.toFixed(5);
+  };
+
+  const formatTime = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString();
+  };
+
+  if (showLogin) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="bg-slate-800 rounded-2xl p-8 w-full max-w-md border border-slate-700">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <span className="text-white font-bold text-xl">EO</span>
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-2">ExpertOption Trading</h1>
+            <p className="text-gray-400">Login to start trading</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <input
+              type="email"
+              placeholder="Email (demo@trading.com)"
+              value={loginData.email}
+              onChange={(e) => setLoginData({...loginData, email: e.target.value})}
+              className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+              required
+            />
+            
+            <input
+              type="password"
+              placeholder="Password (demo123)"
+              value={loginData.password}
+              onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+              className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+              required
+            />
+
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 py-4 rounded-lg font-bold text-white transition"
+            >
+              Login to Trading Platform
+            </button>
+          </form>
+
+          <div className="bg-blue-900/30 rounded-lg p-4 mt-6">
+            <p className="text-sm font-semibold text-blue-300 mb-1">Demo Account:</p>
+            <p className="text-xs text-blue-200">
+              Email: demo@trading.com<br/>
+              Password: demo123<br/>
+              Virtual Balance: $10,000
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-slate-900 to-black text-white">
-      {/* Header */}
-      <header className="px-6 py-4 flex items-center justify-between border-b border-slate-800">
-        <div className="flex items-center space-x-8">
-          <div className="flex items-center space-x-2">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold">EO</span>
-            </div>
-            <span className="text-xl font-bold">ExpertOption</span>
+    <div className="min-h-screen bg-slate-900 text-white">
+      {/* Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {notifications.map(notification => (
+          <div
+            key={notification.id}
+            className={`px-4 py-3 rounded-lg shadow-lg transition-all duration-300 max-w-sm ${
+              notification.type === 'success' ? 'bg-green-600' :
+              notification.type === 'error' ? 'bg-red-600' : 'bg-blue-600'
+            }`}
+          >
+            <div className="font-semibold">{notification.message}</div>
           </div>
-          <nav className="hidden md:flex space-x-6">
-            <a href="#" className="text-gray-300 hover:text-white transition">Trading</a>
-            <a href="#" className="text-gray-300 hover:text-white transition">Education</a>
-            <a href="#" className="text-gray-300 hover:text-white transition">Company</a>
-            <a href="#" className="text-gray-300 hover:text-white transition">Traders</a>
-          </nav>
-        </div>
-        <div className="flex items-center space-x-4">
-          <button 
-            onClick={() => setShowLoginModal(true)}
-            className="text-blue-400 hover:text-blue-300 transition"
-          >
-            Login
-          </button>
-          <button 
-            onClick={() => setShowRegisterModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold transition"
-          >
-            Register
-          </button>
+        ))}
+      </div>
+
+      {/* Header */}
+      <header className="bg-slate-800 border-b border-slate-700 px-6 py-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center space-x-6">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold">EO</span>
+              </div>
+              <h1 className="text-xl font-bold">ExpertOption</h1>
+            </div>
+            
+            {isLoggedIn && (
+              <div className="flex items-center space-x-4">
+                <div className="bg-green-600 px-4 py-2 rounded-lg">
+                  <span className="font-semibold">${user.balance.toFixed(2)}</span>
+                </div>
+                <button
+                  onClick={() => addNotification('Deposit feature coming soon!', 'info')}
+                  className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition"
+                >
+                  Deposit
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center space-x-4">
+            {isLoggedIn && (
+              <>
+                <button
+                  onClick={() => setShowHistory(!showHistory)}
+                  className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg transition"
+                >
+                  <History className="w-4 h-4" />
+                  <span>History ({tradeHistory.length})</span>
+                </button>
+                
+                <div className="flex items-center space-x-2 text-sm">
+                  <User className="w-4 h-4" />
+                  <span>{user.name}</span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('token');
+                    setIsLoggedIn(false);
+                    setUser(null);
+                    setShowLogin(true);
+                    setActiveTrades([]);
+                    addNotification('Logged out successfully', 'info');
+                  }}
+                  className="text-red-400 hover:text-red-300 p-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="px-6 py-16">
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
-          <div className="space-y-8">
-            <h1 className="text-5xl lg:text-6xl font-bold leading-tight">
-              <span className="text-blue-400">Investing</span> Is<br />
-              Even Better<br />
-              Now
-            </h1>
+      <div className="flex h-[calc(100vh-80px)]">
+        {/* Assets Sidebar */}
+        <div className="w-80 bg-slate-800 border-r border-slate-700 overflow-y-auto">
+          <div className="p-4">
+            <h3 className="font-semibold mb-4 text-lg">Trading Assets</h3>
             
-            <p className="text-xl text-gray-300 leading-relaxed">
-              Providing you with the opportunity to invest<br />
-              in more than 100 assets for continuous income.
-            </p>
-
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="flex -space-x-2">
-                  <div className="w-8 h-8 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold">f</div>
-                  <div className="w-8 h-8 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold">m</div>
-                  <div className="w-8 h-8 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold">yt</div>
-                  <div className="w-8 h-8 bg-orange-500 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold">G</div>
-                </div>
-                <span className="text-sm text-gray-400">+100 assets</span>
-              </div>
-            </div>
-
-            <button 
-              onClick={handleTryDemo}
-              className="bg-blue-600 hover:bg-blue-700 px-8 py-4 rounded-lg font-bold text-lg transition flex items-center space-x-2"
-            >
-              <span>Try free demo</span>
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* 3D Phone Mockup */}
-          <div className="relative">
-            <div className="relative z-10 transform rotate-12 hover:rotate-6 transition-transform duration-500">
-              {/* Phone Frame */}
-              <div className="w-80 h-[600px] bg-gradient-to-br from-gray-800 to-gray-900 rounded-[3rem] p-4 shadow-2xl border border-gray-700">
-                {/* Phone Screen */}
-                <div className="w-full h-full bg-slate-900 rounded-[2.5rem] overflow-hidden relative">
-                  {/* Status Bar */}
-                  <div className="h-8 bg-slate-800 flex items-center justify-between px-4 text-xs">
-                    <span>9:41</span>
-                    <div className="flex space-x-1">
-                      <div className="w-1 h-1 bg-white rounded-full"></div>
-                      <div className="w-1 h-1 bg-white rounded-full"></div>
-                      <div className="w-1 h-1 bg-white rounded-full"></div>
-                    </div>
-                  </div>
-                  
-                  {/* Trading Interface Preview */}
-                  <div className="p-4 space-y-4">
-                    {/* Asset Buttons */}
-                    <div className="flex space-x-2">
-                      <div className="bg-blue-600 px-4 py-2 rounded-lg text-xs font-semibold">Stocks</div>
-                      <div className="bg-slate-700 px-4 py-2 rounded-lg text-xs">Indices</div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="bg-blue-600 px-4 py-2 rounded-lg text-xs font-semibold">Metals</div>
-                      <div className="bg-blue-600 px-4 py-2 rounded-lg text-xs font-semibold">Commodities</div>
-                      <div className="bg-blue-600 px-4 py-2 rounded-lg text-xs font-semibold">ETF</div>
-                    </div>
-
-                    {/* Chart Area */}
-                    <div className="bg-slate-800 rounded-lg p-4 h-48">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-xs text-gray-400">EUR/USD</span>
-                        <span className="text-xs text-green-400">+0.24%</span>
+            <div className="space-y-2">
+              {assets.map(asset => {
+                const priceData = prices[asset.symbol];
+                const isSelected = selectedAsset === asset.symbol;
+                
+                return (
+                  <div
+                    key={asset.symbol}
+                    onClick={() => setSelectedAsset(asset.symbol)}
+                    className={`p-4 rounded-lg cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-700 hover:bg-slate-600 text-gray-300'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center space-x-3">
+                        <span className="text-lg">{asset.icon}</span>
+                        <div>
+                          <div className="font-semibold">{asset.symbol}</div>
+                          <div className="text-xs opacity-75">{asset.name}</div>
+                        </div>
                       </div>
                       
-                      {/* Mini Chart */}
-                      <svg className="w-full h-32" viewBox="0 0 200 80">
-                        <path
-                          d="M0,60 Q50,40 100,45 T200,35"
-                          stroke="#22c55e"
-                          strokeWidth="2"
-                          fill="none"
-                        />
-                        <path
-                          d="M0,65 Q50,45 100,50 T200,40 L200,80 L0,80 Z"
-                          fill="url(#gradient)"
-                          opacity="0.3"
-                        />
-                        <defs>
-                          <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.5"/>
-                            <stop offset="100%" stopColor="#22c55e" stopOpacity="0"/>
-                          </linearGradient>
-                        </defs>
-                      </svg>
-                    </div>
-
-                    {/* Trade Buttons */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <button className="bg-green-600 py-3 rounded-lg text-sm font-bold">CALL</button>
-                      <button className="bg-red-600 py-3 rounded-lg text-sm font-bold">PUT</button>
+                      <div className="text-right">
+                        <div className="font-mono text-sm">
+                          {priceData ? formatPrice(asset.symbol, priceData.price) : '--'}
+                        </div>
+                        <div className={`text-xs flex items-center ${
+                          (priceData?.change || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {(priceData?.change || 0) >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
+                          {(priceData?.change || 0).toFixed(2)}%
+                        </div>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+
+            {/* Active Trades */}
+            {activeTrades.length > 0 && (
+              <div className="mt-6">
+                <h4 className="font-semibold mb-3">Active Trades ({activeTrades.length})</h4>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {activeTrades.map(trade => (
+                    <div key={trade.id} className="bg-slate-700 p-3 rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-medium">{trade.asset}</span>
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                          trade.direction === 'CALL' ? 'bg-green-600' : 'bg-red-600'
+                        }`}>
+                          {trade.direction}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm text-gray-300">
+                        <span>${trade.amount}</span>
+                        <span>{Math.max(0, Math.ceil((trade.expirationTime - Date.now()) / 1000))}s</span>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        Entry: {formatPrice(trade.asset, trade.entryPrice)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
-            
-            {/* Floating Elements */}
-            <div className="absolute top-20 -right-10 w-16 h-16 bg-blue-500/20 rounded-full animate-pulse"></div>
-            <div className="absolute bottom-20 -left-10 w-12 h-12 bg-purple-500/20 rounded-full animate-pulse delay-1000"></div>
+            )}
           </div>
         </div>
-      </section>
 
-      {/* For All Devices Section */}
-      <section className="px-6 py-16 bg-slate-800/50">
-        <div className="max-w-6xl mx-auto text-center">
-          <h2 className="text-4xl font-bold mb-12">For All Devices</h2>
-          
-          <div className="grid md:grid-cols-4 gap-8">
-            <div className="space-y-4">
-              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto">
-                <Smartphone className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-semibold">Android</h3>
-              <p className="text-gray-400 text-sm">4.4 and higher</p>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto">
-                <Apple className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-semibold">iOS</h3>
-              <p className="text-gray-400 text-sm">iOS 10 and higher</p>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto">
-                <Monitor className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-semibold">Windows</h3>
-              <p className="text-gray-400 text-sm">For quick trading</p>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto">
-                <Apple className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-semibold">MacOS</h3>
-              <p className="text-gray-400 text-sm">Macintosh and Safari</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works Section */}
-      <section className="px-6 py-16">
-        <div className="max-w-6xl mx-auto text-center">
-          <h2 className="text-4xl font-bold mb-12">How It Works</h2>
-          
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="space-y-6">
-              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto">
-                <Download className="w-8 h-8" />
-              </div>
-              <h3 className="text-2xl font-semibold">Deposit</h3>
-              <p className="text-gray-400">
-                Open a real account and add funds. We<br />
-                do not ask for more than $10.
-              </p>
-            </div>
-            
-            <div className="space-y-6">
-              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto">
-                <TrendingUp className="w-8 h-8" />
-              </div>
-              <h3 className="text-2xl font-semibold">Trade</h3>
-              <p className="text-gray-400">
-                Trade any of 100 assets and stocks.<br />
-                Use technical analysis and trade the<br />
-                news.
-              </p>
-            </div>
-            
-            <div className="space-y-6">
-              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto">
-                <Globe className="w-8 h-8" />
-              </div>
-              <h3 className="text-2xl font-semibold">Withdraw</h3>
-              <p className="text-gray-400">
-                Get your money to your bank card or e-<br />
-                wallet. We take no commission.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Trusted Section */}
-      <section className="px-6 py-16 bg-slate-800/50">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div className="space-y-6">
-              <div className="flex items-center space-x-3">
-                <Shield className="w-8 h-8 text-blue-400" />
-                <h2 className="text-4xl font-bold">Trusted</h2>
-              </div>
-              
-              <p className="text-gray-300 text-lg">
-                ExpertOption is a leader in the online trading industry.<br />
-                We are trusted by more than 65,000,000 clients<br />
-                worldwide.
-              </p>
-              
-              <button 
-                onClick={handleTryDemo}
-                className="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg font-semibold transition"
-              >
-                See more
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="bg-slate-700 rounded-lg p-4 flex items-center space-x-4">
-                <Star className="w-6 h-6 text-yellow-400" />
-                <div>
-                  <h4 className="font-semibold">Best Trading Platform</h4>
-                  <p className="text-sm text-gray-400">Award winner at China Trading Expo</p>
-                  <p className="text-xs text-gray-500">Shanghai, 27 May 2017</p>
+        {/* Main Trading Area */}
+        <div className="flex-1 flex flex-col">
+          {/* Chart Header */}
+          <div className="bg-slate-800 border-b border-slate-700 p-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-6">
+                <h2 className="text-2xl font-bold">{selectedAsset}</h2>
+                <div className="text-3xl font-mono font-bold">
+                  {prices[selectedAsset] ? formatPrice(selectedAsset, prices[selectedAsset].price) : '--'}
+                </div>
+                <div className={`flex items-center space-x-1 ${
+                  (prices[selectedAsset]?.change || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                }`}>
+                  {(prices[selectedAsset]?.change || 0) >= 0 ? 
+                    <TrendingUp className="w-5 h-5" /> : 
+                    <TrendingDown className="w-5 h-5" />
+                  }
+                  <span className="font-semibold">
+                    {(prices[selectedAsset]?.change || 0).toFixed(2)}%
+                  </span>
                 </div>
               </div>
+
+              <div className="text-sm text-gray-400">
+                Last updated: {formatTime(Date.now())}
+              </div>
+            </div>
+          </div>
+
+          {/* Chart */}
+          <div className="flex-1 p-6">
+            <div className="bg-slate-800 rounded-lg p-4 h-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis 
+                    dataKey="time" 
+                    tickFormatter={(time) => new Date(time).toLocaleTimeString()}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#9ca3af', fontSize: 12 }}
+                  />
+                  <YAxis 
+                    domain={['dataMin - 0.001', 'dataMax + 0.001']}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#9ca3af', fontSize: 12 }}
+                    tickFormatter={(value) => value.toFixed(5)}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="price"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    fill="url(#priceGradient)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
-      </section>
 
-      {/* Global Trading Platform */}
-      <section className="px-6 py-16">
-        <div className="max-w-6xl mx-auto text-center">
-          <h2 className="text-4xl font-bold mb-12">Global Trading Platform</h2>
-          
-          <div className="grid md:grid-cols-4 gap-8 mb-12">
-            <div className="space-y-2">
-              <div className="text-3xl font-bold text-blue-400">$10</div>
-              <div className="text-sm text-gray-400">Minimum Deposit</div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-3xl font-bold text-blue-400">$1</div>
-              <div className="text-sm text-gray-400">Minimum Trading Amount</div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-3xl font-bold text-blue-400">0%</div>
-              <div className="text-sm text-gray-400">Commissions</div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-3xl font-bold text-blue-400">0%</div>
-              <div className="text-sm text-gray-400">Fees</div>
-            </div>
-          </div>
-
-          <p className="text-gray-400 mb-8">People from 45 countries trade at ExpertOption</p>
-
-          {/* World Map */}
-          <div className="relative bg-slate-800 rounded-2xl p-8 overflow-hidden">
-            <div className="absolute inset-0 opacity-30">
-              <svg viewBox="0 0 800 400" className="w-full h-full">
-                <defs>
-                  <pattern id="dots" patternUnits="userSpaceOnUse" width="20" height="20">
-                    <circle cx="10" cy="10" r="1" fill="#3b82f6" opacity="0.5"/>
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#dots)"/>
-                
-                {/* Simplified world map outline */}
-                <path
-                  d="M150,150 Q200,120 250,140 T350,130 Q400,110 450,125 T550,120 Q600,100 650,115 M100,200 Q150,180 200,190 T300,185 Q350,165 400,175 T500,170 Q550,150 600,165"
-                  stroke="#3b82f6"
-                  strokeWidth="2"
-                  fill="none"
-                  opacity="0.6"
-                />
-                
-                {/* Trading activity dots */}
-                <circle cx="200" cy="150" r="3" fill="#22c55e" className="animate-pulse"/>
-                <circle cx="350" cy="180" r="3" fill="#22c55e" className="animate-pulse" style={{animationDelay: '0.5s'}}/>
-                <circle cx="500" cy="160" r="3" fill="#22c55e" className="animate-pulse" style={{animationDelay: '1s'}}/>
-                <circle cx="600" cy="140" r="3" fill="#22c55e" className="animate-pulse" style={{animationDelay: '1.5s'}}/>
-              </svg>
-            </div>
-            
-            <div className="relative z-10 text-center">
-              <h3 className="text-2xl font-bold mb-4">Real-time Trading Activity</h3>
-              <p className="text-gray-400">Join millions of traders worldwide</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="px-6 py-16 bg-slate-900 border-t border-slate-800">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid md:grid-cols-5 gap-8">
-            <div className="space-y-4">
+        {/* Trading Panel */}
+        <div className="w-80 bg-slate-800 border-l border-slate-700 p-6">
+          <div className="space-y-6">
+            {/* Trade Amount */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Investment Amount</label>
               <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">EO</span>
+                <button
+                  onClick={() => setTradeAmount(Math.max(1, tradeAmount - 5))}
+                  className="bg-slate-700 hover:bg-slate-600 p-2 rounded-lg"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    value={tradeAmount}
+                    onChange={(e) => setTradeAmount(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-center font-mono text-lg focus:border-blue-500 focus:outline-none"
+                    min="1"
+                  />
                 </div>
-                <span className="text-lg font-bold">ExpertOption</span>
-              </div>
-              <p className="text-sm text-gray-400">
-                The Company does not provide services to citizens and/or residents of the United States, Belgium, Bulgaria, Canada, Croatia, Cyprus, Czech Republic, Denmark, Estonia, Finland, France, Germany, Greece, Hungary, Iceland, Iran, Ireland, Israel, Italy, Latvia, Liechtenstein, Lithuania, Luxembourg, Malta, Netherlands, North Korea, Norway, Poland, Portugal, Puerto Rico, Romania, Russia, Singapore, Slovakia, Slovenia, Spain, Sudan, Sweden, Switzerland, Turkey, Ukraine, United Kingdom, Yemen.
-              </p>
-            </div>
-            
-            <div className="space-y-3">
-              <h4 className="font-semibold">Home</h4>
-              <div className="space-y-2 text-sm text-gray-400">
-                <div>Free demo</div>
-                <div>Features</div>
-                <div>Login</div>
-                <div>Register</div>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <h4 className="font-semibold">Trading</h4>
-              <div className="space-y-2 text-sm text-gray-400">
-                <div>Account types</div>
-                <div>Social trading</div>
-                <div>FAQ</div>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <h4 className="font-semibold">Education</h4>
-              <div className="space-y-2 text-sm text-gray-400">
-                <div>How to Start</div>
-                <div>First Steps and Asset</div>
-                <div>Strategies</div>
-                <div>Fundamental</div>
-                <div>Recovery & Growth</div>
-                <div>Advanced trading strategies</div>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <h4 className="font-semibold">Company</h4>
-              <div className="space-y-2 text-sm text-gray-400">
-                <div>About company</div>
-                <div>News</div>
-                <div>Payment Policy</div>
-                <div>Return Policy</div>
-                <div>Privacy Policy</div>
-                <div>AML & KYC</div>
-                <div>Regulation</div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="border-t border-slate-800 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-            <div className="text-sm text-gray-400">
-              © 2014-2024 ExpertOption. Cape Verde. All rights reserved.
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <div className="text-sm text-gray-400">Payment methods:</div>
-              <div className="flex space-x-2">
-                <div className="w-8 h-5 bg-blue-600 rounded text-xs flex items-center justify-center">VISA</div>
-                <div className="w-8 h-5 bg-red-600 rounded text-xs flex items-center justify-center">MC</div>
-                <div className="w-8 h-5 bg-yellow-600 rounded text-xs flex items-center justify-center">$</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </footer>
-
-      {/* Login Modal */}
-      {showLoginModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-2xl p-8 w-full max-w-md border border-slate-700">
-            <div className="text-center mb-6">
-              <h3 className="text-2xl font-bold mb-2">Login to Your Account</h3>
-              <p className="text-gray-400">Welcome back to ExpertOption</p>
-            </div>
-
-            <div className="space-y-4">
-              <input
-                type="email"
-                placeholder="Email Address"
-                value={loginData.email}
-                onChange={(e) => setLoginData({...loginData, email: e.target.value})}
-                className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-              />
-              
-              <input
-                type="password"
-                placeholder="Password"
-                value={loginData.password}
-                onChange={(e) => setLoginData({...loginData, password: e.target.value})}
-                className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-              />
-
-              <div className="flex space-x-3">
                 <button
-                  onClick={handleLogin}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-bold transition"
+                  onClick={() => setTradeAmount(tradeAmount + 5)}
+                  className="bg-slate-700 hover:bg-slate-600 p-2 rounded-lg"
                 >
-                  Login
-                </button>
-                <button
-                  onClick={() => setShowLoginModal(false)}
-                  className="flex-1 bg-slate-600 hover:bg-slate-700 py-3 rounded-lg font-bold transition"
-                >
-                  Cancel
+                  <Plus className="w-4 h-4" />
                 </button>
               </div>
+              <div className="text-xs text-gray-400 mt-1">
+                Potential payout: ${(tradeAmount * 1.8).toFixed(2)} (80% profit)
+              </div>
             </div>
 
-            <div className="text-center mt-6">
-              <button 
-                onClick={() => {
-                  setShowLoginModal(false);
-                  setShowRegisterModal(true);
-                }}
-                className="text-blue-400 hover:text-blue-300 text-sm"
+            {/* Time Selection */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Expiration Time</label>
+              <div className="grid grid-cols-3 gap-2">
+                {timeOptions.map(option => (
+                  <button
+                    key={option.value}
+                    onClick={() => setSelectedTime(option.value)}
+                    className={`p-2 rounded-lg text-sm font-medium transition ${
+                      selectedTime === option.value
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-700 hover:bg-slate-600 text-gray-300'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Trade Buttons */}
+            <div className="space-y-3">
+              <button
+                onClick={() => placeTrade('CALL')}
+                disabled={!isLoggedIn || user?.balance < tradeAmount}
+                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed py-4 rounded-lg font-bold text-lg transition flex items-center justify-center space-x-2"
               >
-                Don't have an account? Register here
+                <TrendingUp className="w-5 h-5" />
+                <span>CALL (Higher)</span>
+              </button>
+
+              <button
+                onClick={() => placeTrade('PUT')}
+                disabled={!isLoggedIn || user?.balance < tradeAmount}
+                className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed py-4 rounded-lg font-bold text-lg transition flex items-center justify-center space-x-2"
+              >
+                <TrendingDown className="w-5 h-5" />
+                <span>PUT (Lower)</span>
               </button>
             </div>
 
-            <div className="bg-slate-700/50 rounded-lg p-3 mt-6 text-center">
-              <p className="text-sm font-semibold text-gray-300 mb-1">Demo Login:</p>
-              <p className="text-xs text-gray-400">
-                Use any email and password<br />
-                Virtual Balance: $10,000
-              </p>
-            </div>
+            {!isLoggedIn && (
+              <div className="bg-yellow-600/20 border border-yellow-600/30 rounded-lg p-3 text-center">
+                <p className="text-sm text-yellow-300">
+                  Login required to place trades
+                </p>
+              </div>
+            )}
+
+            {/* Quick Stats */}
+            {isLoggedIn && (
+              <div className="bg-slate-700 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-400">Active Trades:</span>
+                  <span className="text-sm font-semibold">{activeTrades.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-400">Total Invested:</span>
+                  <span className="text-sm font-semibold">
+                    ${activeTrades.reduce((sum, trade) => sum + trade.amount, 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-400">Completed Trades:</span>
+                  <span className="text-sm font-semibold">{tradeHistory.length}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Register Modal */}
-      {showRegisterModal && (
+      {/* Trade History Modal */}
+      {showHistory && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-2xl p-8 w-full max-w-md border border-slate-700">
-            <div className="text-center mb-6">
-              <h3 className="text-2xl font-bold mb-2">Create Your Account</h3>
-              <p className="text-gray-400">Join ExpertOption today</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="text"
-                  placeholder="First Name"
-                  value={registerData.firstName}
-                  onChange={(e) => setRegisterData({...registerData, firstName: e.target.value})}
-                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-                />
-                <input
-                  type="text"
-                  placeholder="Last Name"
-                  value={registerData.lastName}
-                  onChange={(e) => setRegisterData({...registerData, lastName: e.target.value})}
-                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <input
-                type="email"
-                placeholder="Email Address"
-                value={registerData.email}
-                onChange={(e) => setRegisterData({...registerData, email: e.target.value})}
-                className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-              />
-              
-              <input
-                type="password"
-                placeholder="Password"
-                value={registerData.password}
-                onChange={(e) => setRegisterData({...registerData, password: e.target.value})}
-                className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-              />
-
-              <select
-                value={registerData.country}
-                onChange={(e) => setRegisterData({...registerData, country: e.target.value})}
-                className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-4xl max-h-[80vh] overflow-hidden border border-slate-700">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold">Trading History</h3>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="text-gray-400 hover:text-white text-2xl"
               >
-                <option value="US">United States</option>
-                <option value="UK">United Kingdom</option>
-                <option value="CA">Canada</option>
-                <option value="AU">Australia</option>
-                <option value="DE">Germany</option>
-                <option value="FR">France</option>
-                <option value="JP">Japan</option>
-                <option value="Other">Other</option>
-              </select>
-
-              <div className="flex space-x-3">
-                <button
-                  onClick={handleRegister}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-bold transition"
-                >
-                  Create Account
-                </button>
-                <button
-                  onClick={() => setShowRegisterModal(false)}
-                  className="flex-1 bg-slate-600 hover:bg-slate-700 py-3 rounded-lg font-bold transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-
-            <div className="text-center mt-6">
-              <button 
-                onClick={() => {
-                  setShowRegisterModal(false);
-                  setShowLoginModal(true);
-                }}
-                className="text-blue-400 hover:text-blue-300 text-sm"
-              >
-                Already have an account? Login here
+                ×
               </button>
+            </div>
+
+            <div className="overflow-y-auto max-h-96">
+              {tradeHistory.length === 0 ? (
+                <div className="text-center text-gray-400 py-8">
+                  No completed trades yet
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {tradeHistory.map(trade => (
+                    <div
+                      key={trade.id}
+                      className={`p-4 rounded-lg border-l-4 ${
+                        trade.won
+                          ? 'bg-green-900/20 border-green-500'
+                          : 'bg-red-900/20 border-red-500'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center space-x-3 mb-2">
+                            <span className="font-semibold">{trade.asset}</span>
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                              trade.direction === 'CALL' ? 'bg-green-600' : 'bg-red-600'
+                            }`}>
+                              {trade.direction}
+                            </span>
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                              trade.won ? 'bg-green-600' : 'bg-red-600'
+                            }`}>
+                              {trade.won ? 'WON' : 'LOST'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 text-sm text-gray-300">
+                            <div>
+                              <div>Amount: ${trade.amount}</div>
+                              <div>Entry: {formatPrice(trade.asset, trade.entryPrice)}</div>
+                            </div>
+                            <div>
+                              <div>Close: {formatPrice(trade.asset, trade.closePrice)}</div>
+                              <div>Duration: {trade.duration}s</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`text-lg font-bold ${
+                            trade.won ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            {trade.won ? '+' : ''}${trade.profit.toFixed(2)}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {formatTime(trade.closeTime)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
     </div>
   );
-}
+};
+
+export default ExpertOptionTradingDashboard;
