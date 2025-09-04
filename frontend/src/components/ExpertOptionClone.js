@@ -1,6 +1,42 @@
+// src/components/ExpertOptionTradingDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { TrendingUp, TrendingDown, History, User, LogOut, Plus, Minus } from 'lucide-react';
+
+// CoinGecko API for real crypto prices
+const COINGECKO_API = 'https://api.coingecko.com/api/v3/simple/price';
+
+const COIN_GECKO_MAP = {
+  BTCUSD: 'bitcoin',
+  ETHUSD: 'ethereum',
+};
+
+const fetchCryptoPrices = async () => {
+  try {
+    const ids = Object.values(COIN_GECKO_MAP).join(',');
+    const response = await fetch(`${COINGECKO_API}?ids=${ids}&vs_currencies=usd`);
+    if (!response.ok) throw new Error('Failed to fetch crypto prices');
+
+    const data = await response.json();
+    const prices = {};
+
+    for (const [symbol, id] of Object.entries(COIN_GECKO_MAP)) {
+      if (data[id]?.usd) {
+        prices[symbol] = {
+          price: data[id].usd,
+          change: Math.random() * 10 - 5, // Simulated % change
+          volume: Math.random() * 1e6,
+          timestamp: Date.now(),
+        };
+      }
+    }
+
+    return prices;
+  } catch (error) {
+    console.error('Error fetching crypto prices:', error);
+    return {};
+  }
+};
 
 const ExpertOptionTradingDashboard = () => {
   // Authentication State
@@ -17,7 +53,7 @@ const ExpertOptionTradingDashboard = () => {
   const [tradeHistory, setTradeHistory] = useState([]);
   const [prices, setPrices] = useState({});
   const [chartData, setChartData] = useState([]);
-  
+
   // UI State
   const [notifications, setNotifications] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -46,12 +82,11 @@ const ExpertOptionTradingDashboard = () => {
     { value: 1800, label: '30m' }
   ];
 
-  // Initialize prices and check for existing user
+  // Initialize user and prices
   useEffect(() => {
-    // Check if user is already logged in
     const savedUser = localStorage.getItem('user');
     const savedToken = localStorage.getItem('token');
-    
+
     if (savedUser && savedToken) {
       setUser(JSON.parse(savedUser));
       setIsLoggedIn(true);
@@ -59,59 +94,79 @@ const ExpertOptionTradingDashboard = () => {
       addNotification('Welcome back!', 'success');
     }
 
-    // Initialize prices
-    const initialPrices = {};
-    assets.forEach(asset => {
-      initialPrices[asset.symbol] = {
-        price: asset.basePrice,
-        change: (Math.random() - 0.5) * 2,
-        volume: Math.random() * 1000000
-      };
-    });
-    setPrices(initialPrices);
-    
-    generateChartData();
+    const initializePrices = async () => {
+      const cryptoPrices = await fetchCryptoPrices();
+      const fallbackPrices = {};
+
+      assets.forEach(asset => {
+        if (!cryptoPrices[asset.symbol]) {
+          fallbackPrices[asset.symbol] = {
+            price: asset.basePrice,
+            change: (Math.random() - 0.5) * 2,
+            volume: Math.random() * 1e6,
+            timestamp: Date.now(),
+          };
+        }
+      });
+
+      const allPrices = { ...fallbackPrices, ...cryptoPrices };
+      setPrices(allPrices);
+      generateChartData();
+    };
+
+    initializePrices();
   }, []);
 
-  // Real-time price updates
+  // Real-time price updates (every 10 seconds)
   useEffect(() => {
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
+      const cryptoPrices = await fetchCryptoPrices();
+
       setPrices(prev => {
         const newPrices = { ...prev };
+
         assets.forEach(asset => {
-          const currentPrice = prev[asset.symbol]?.price || asset.basePrice;
-          const variation = (Math.random() - 0.5) * 0.002;
-          const newPrice = Math.max(0.001, currentPrice * (1 + variation));
-          const change = ((newPrice - asset.basePrice) / asset.basePrice) * 100;
-          
-          newPrices[asset.symbol] = {
-            price: newPrice,
-            change: change,
-            volume: Math.random() * 1000000,
-            timestamp: Date.now()
-          };
+          if (COIN_GECKO_MAP[asset.symbol]) {
+            if (cryptoPrices[asset.symbol]) {
+              newPrices[asset.symbol] = cryptoPrices[asset.symbol];
+            }
+          } else {
+            const currentPrice = prev[asset.symbol]?.price || asset.basePrice;
+            const variation = (Math.random() - 0.5) * 0.002;
+            const newPrice = Math.max(0.001, currentPrice * (1 + variation));
+            const change = ((newPrice - asset.basePrice) / asset.basePrice) * 100;
+
+            newPrices[asset.symbol] = {
+              price: newPrice,
+              change,
+              volume: Math.random() * 1e6,
+              timestamp: Date.now(),
+            };
+          }
         });
+
         return newPrices;
       });
 
-      // Update chart data
       updateChartData();
-    }, 2000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [selectedAsset]);
 
-  // Check for trade settlements
+  // Trade settlement checker
   useEffect(() => {
     const interval = setInterval(() => {
-      setActiveTrades(prevTrades => {
-        return prevTrades.map(trade => {
-          if (!trade.settled && Date.now() >= trade.expirationTime) {
-            return settleTrade(trade);
-          }
-          return trade;
-        }).filter(trade => !trade.settled);
-      });
+      setActiveTrades(prevTrades =>
+        prevTrades
+          .map(trade => {
+            if (!trade.settled && Date.now() >= trade.expirationTime) {
+              return settleTrade(trade);
+            }
+            return trade;
+          })
+          .filter(trade => !trade.settled)
+      );
     }, 1000);
 
     return () => clearInterval(interval);
@@ -120,8 +175,8 @@ const ExpertOptionTradingDashboard = () => {
   const generateChartData = () => {
     const data = [];
     const asset = assets.find(a => a.symbol === selectedAsset);
-    let price = asset?.basePrice || 1.0856;
-    
+    let price = prices[selectedAsset]?.price || asset?.basePrice || 1.0856;
+
     for (let i = 0; i < 50; i++) {
       const variation = (Math.random() - 0.5) * 0.001;
       price = price * (1 + variation);
@@ -156,9 +211,9 @@ const ExpertOptionTradingDashboard = () => {
       type,
       timestamp: Date.now()
     };
-    
+
     setNotifications(prev => [notification, ...prev.slice(0, 4)]);
-    
+
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== notification.id));
     }, 5000);
@@ -166,8 +221,7 @@ const ExpertOptionTradingDashboard = () => {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    
-    // Demo login (works with any credentials)
+
     const userData = {
       id: Date.now(),
       email: loginData.email,
@@ -176,10 +230,10 @@ const ExpertOptionTradingDashboard = () => {
       accountType: 'Demo',
       joinedDate: new Date().toISOString()
     };
-    
+
     localStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('token', 'demo-token-' + Date.now());
-    
+
     setUser(userData);
     setIsLoggedIn(true);
     setShowLogin(false);
@@ -191,18 +245,18 @@ const ExpertOptionTradingDashboard = () => {
       addNotification('Please login to trade', 'error');
       return;
     }
-    
+
     if (user.balance < tradeAmount) {
       addNotification('Insufficient balance', 'error');
       return;
     }
-    
+
     const currentPrice = prices[selectedAsset]?.price;
     if (!currentPrice) {
       addNotification('Price data unavailable', 'error');
       return;
     }
-    
+
     const trade = {
       id: Date.now(),
       asset: selectedAsset,
@@ -213,15 +267,14 @@ const ExpertOptionTradingDashboard = () => {
       expirationTime: Date.now() + (selectedTime * 1000),
       duration: selectedTime,
       settled: false,
-      payout: tradeAmount * 1.8 // 80% payout
+      payout: tradeAmount * 1.8
     };
-    
-    // Deduct trade amount from balance
+
     const newBalance = user.balance - tradeAmount;
     const updatedUser = { ...user, balance: newBalance };
     setUser(updatedUser);
     localStorage.setItem('user', JSON.stringify(updatedUser));
-    
+
     setActiveTrades(prev => [...prev, trade]);
     addNotification(`${direction} trade placed on ${selectedAsset} - $${tradeAmount}`, 'info');
   };
@@ -229,21 +282,20 @@ const ExpertOptionTradingDashboard = () => {
   const settleTrade = (trade) => {
     const currentPrice = prices[trade.asset]?.price || trade.entryPrice;
     const priceChange = currentPrice - trade.entryPrice;
-    
+
     let won = false;
     if (trade.direction === 'CALL' && priceChange > 0) won = true;
     if (trade.direction === 'PUT' && priceChange < 0) won = true;
-    
+
     const settledTrade = {
       ...trade,
       settled: true,
-      won: won,
+      won,
       closePrice: currentPrice,
       profit: won ? trade.payout - trade.amount : -trade.amount,
       closeTime: Date.now()
     };
-    
-    // Update balance if won
+
     if (won) {
       const newBalance = user.balance + trade.payout;
       const updatedUser = { ...user, balance: newBalance };
@@ -253,14 +305,15 @@ const ExpertOptionTradingDashboard = () => {
     } else {
       addNotification(`Trade LOST -$${trade.amount}`, 'error');
     }
-    
+
     setTradeHistory(prev => [settledTrade, ...prev]);
     return settledTrade;
   };
 
   const formatPrice = (symbol, price) => {
+    if (!price) return '--';
     const asset = assets.find(a => a.symbol === symbol);
-    if (asset?.type === 'crypto') return price.toFixed(2);
+    if (asset?.type === 'crypto') return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (symbol === 'USDJPY') return price.toFixed(3);
     return price.toFixed(5);
   };
@@ -286,16 +339,16 @@ const ExpertOptionTradingDashboard = () => {
               type="email"
               placeholder="Email (demo@trading.com)"
               value={loginData.email}
-              onChange={(e) => setLoginData({...loginData, email: e.target.value})}
+              onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
               className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
               required
             />
-            
+
             <input
               type="password"
               placeholder="Password (demo123)"
               value={loginData.password}
-              onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+              onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
               className="w-full p-4 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
               required
             />
@@ -311,8 +364,8 @@ const ExpertOptionTradingDashboard = () => {
           <div className="bg-blue-900/30 rounded-lg p-4 mt-6">
             <p className="text-sm font-semibold text-blue-300 mb-1">Demo Account:</p>
             <p className="text-xs text-blue-200">
-              Email: demo@trading.com<br/>
-              Password: demo123<br/>
+              Email: demo@trading.com<br />
+              Password: demo123<br />
               Virtual Balance: $10,000
             </p>
           </div>
@@ -348,7 +401,7 @@ const ExpertOptionTradingDashboard = () => {
               </div>
               <h1 className="text-xl font-bold">ExpertOption</h1>
             </div>
-            
+
             {isLoggedIn && (
               <div className="flex items-center space-x-4">
                 <div className="bg-green-600 px-4 py-2 rounded-lg">
@@ -374,7 +427,7 @@ const ExpertOptionTradingDashboard = () => {
                   <History className="w-4 h-4" />
                   <span>History ({tradeHistory.length})</span>
                 </button>
-                
+
                 <div className="flex items-center space-x-2 text-sm">
                   <User className="w-4 h-4" />
                   <span>{user.name}</span>
@@ -405,12 +458,12 @@ const ExpertOptionTradingDashboard = () => {
         <div className="w-80 bg-slate-800 border-r border-slate-700 overflow-y-auto">
           <div className="p-4">
             <h3 className="font-semibold mb-4 text-lg">Trading Assets</h3>
-            
+
             <div className="space-y-2">
               {assets.map(asset => {
                 const priceData = prices[asset.symbol];
                 const isSelected = selectedAsset === asset.symbol;
-                
+
                 return (
                   <div
                     key={asset.symbol}
@@ -429,7 +482,7 @@ const ExpertOptionTradingDashboard = () => {
                           <div className="text-xs opacity-75">{asset.name}</div>
                         </div>
                       </div>
-                      
+
                       <div className="text-right">
                         <div className="font-mono text-sm">
                           {priceData ? formatPrice(asset.symbol, priceData.price) : '--'}
@@ -479,7 +532,6 @@ const ExpertOptionTradingDashboard = () => {
 
         {/* Main Trading Area */}
         <div className="flex-1 flex flex-col">
-          {/* Chart Header */}
           <div className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-6">
@@ -499,37 +551,35 @@ const ExpertOptionTradingDashboard = () => {
                   </span>
                 </div>
               </div>
-
               <div className="text-sm text-gray-400">
                 Last updated: {formatTime(Date.now())}
               </div>
             </div>
           </div>
 
-          {/* Chart */}
           <div className="flex-1 p-6">
             <div className="bg-slate-800 rounded-lg p-4 h-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <XAxis 
-                    dataKey="time" 
+                  <XAxis
+                    dataKey="time"
                     tickFormatter={(time) => new Date(time).toLocaleTimeString()}
                     axisLine={false}
                     tickLine={false}
                     tick={{ fill: '#9ca3af', fontSize: 12 }}
                   />
-                  <YAxis 
+                  <YAxis
                     domain={['dataMin - 0.001', 'dataMax + 0.001']}
                     axisLine={false}
                     tickLine={false}
                     tick={{ fill: '#9ca3af', fontSize: 12 }}
-                    tickFormatter={(value) => value.toFixed(5)}
+                    tickFormatter={(value) => formatPrice(selectedAsset, value)}
                   />
                   <Area
                     type="monotone"
@@ -547,7 +597,6 @@ const ExpertOptionTradingDashboard = () => {
         {/* Trading Panel */}
         <div className="w-80 bg-slate-800 border-l border-slate-700 p-6">
           <div className="space-y-6">
-            {/* Trade Amount */}
             <div>
               <label className="block text-sm font-medium mb-2">Investment Amount</label>
               <div className="flex items-center space-x-2">
@@ -578,7 +627,6 @@ const ExpertOptionTradingDashboard = () => {
               </div>
             </div>
 
-            {/* Time Selection */}
             <div>
               <label className="block text-sm font-medium mb-2">Expiration Time</label>
               <div className="grid grid-cols-3 gap-2">
@@ -598,7 +646,6 @@ const ExpertOptionTradingDashboard = () => {
               </div>
             </div>
 
-            {/* Trade Buttons */}
             <div className="space-y-3">
               <button
                 onClick={() => placeTrade('CALL')}
@@ -627,7 +674,6 @@ const ExpertOptionTradingDashboard = () => {
               </div>
             )}
 
-            {/* Quick Stats */}
             {isLoggedIn && (
               <div className="bg-slate-700 rounded-lg p-4 space-y-2">
                 <div className="flex justify-between">

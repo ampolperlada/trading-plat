@@ -6,6 +6,7 @@ import { TradingProvider } from '../contexts/TradingContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Head from 'next/head';
+import '../styles/globals.css';
 
 // Import global styles (Tailwind CSS via build process)
 import '../styles/globals.css'; // ✅ This should include @tailwind directives
