@@ -1,28 +1,31 @@
-import { useEffect } from 'react';
-import { useRouter } from 'next/router';
-import ExpertOptionClone from '../components/ExpertOptionClone';
+// pages/index.js - Main Application Entry Point
+import { useAuth } from '../contexts/AuthContext';
+import LoginForm from '../components/LoginForm';
+import ExpertOptionTradingDashboard from '../components/ExpertOptionTradingDashboard';
+import { useEffect, useState } from 'react';
 
-export default function HomePage() {
-  const router = useRouter();
+export default function Home() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const [mounted, setMounted] = useState(false);
 
+  // Prevent hydration mismatch
   useEffect(() => {
-    // Optional: Clear any existing auth data on fresh load
-    // This ensures clean state when landing on the main page
-    const urlParams = new URLSearchParams(window.location.search);
-    const clearAuth = urlParams.get('clear');
-    
-    if (clearAuth === 'true') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      // Remove the query param from URL without reload
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+    setMounted(true);
   }, []);
 
-  return (
-    <div>
-      {/* Expert Option Clone - Landing Page is Trading Interface */}
-      <ExpertOptionClone />
-    </div>
-  );
+  if (!mounted || isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <span className="text-white font-bold text-xl">EO</span>
+          </div>
+          <div className="text-white text-lg">Loading ExpertOption...</div>
+          <div className="text-gray-400 text-sm mt-2">Connecting to markets</div>
+        </div>
+      </div>
+    );
+  }
+
+  return isAuthenticated ? <ExpertOptionTradingDashboard /> : <LoginForm />;
 }
