@@ -7,12 +7,18 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Head from 'next/head';
 
+// Import global styles (Tailwind CSS via build process)
+import '../styles/globals.css'; // ✅ This should include @tailwind directives
+
 export default function App({ Component, pageProps }) {
   return (
     <>
       <Head>
-        <script src="https://cdn.tailwindcss.com"></script>
+        <title>ExpertOption Clone | Trading Platform</title>
+        <meta name="description" content="A modern clone of ExpertOption for demo trading" />
+        <link rel="icon" href="/favicon.ico" />
       </Head>
+
       <AuthProvider>
         <WebSocketProvider>
           <MarketDataProvider>
