@@ -16,6 +16,7 @@ import {
   CreditCard,
   CheckCircle
 } from 'lucide-react';
+import apiService from '../services/api';
 
 // Trading Dashboard Component
 const TradingDashboard = () => {
@@ -401,10 +402,199 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [showTradingDashboard, setShowTradingDashboard] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  
+  // Authentication form data
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [registerForm, setRegisterForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+
+    try {
+      let result;
+      
+      if (authMode === 'login') {
+        result = await apiService.login(loginForm.email, loginForm.password);
+      } else {
+        if (registerForm.password !== registerForm.confirmPassword) {
+          throw new Error('Passwords do not match');
+        }
+        
+        result = await apiService.register({
+          firstName: registerForm.firstName,
+          lastName: registerForm.lastName,
+          email: registerForm.email,
+          password: registerForm.password
+        });
+      }
+
+      // Store token and user data
+      localStorage.setItem('token', result.token);
+      localStorage.setItem('user', JSON.stringify(result.user));
+      
+      // Redirect to trading dashboard
+      setShowTradingDashboard(true);
+      setShowAuthModal(false);
+      
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleRegister = () => {
+    setShowAuthModal(true);
+    setAuthMode('register');
+  };
+
+  const handleNavigation = () => {
+    setShowAuthModal(true);
+    setAuthMode('login');
+  };
+
+  const handleBackToLanding = () => {
+    setShowTradingDashboard(false);
+  };
+
+  const AuthModal = () => (
+    showAuthModal && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-slate-800 rounded-2xl p-8 w-full max-w-md mx-4 border border-slate-700">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-white">
+              {authMode === 'login' ? 'Login' : 'Create Account'}
+            </h2>
+            <button
+              onClick={() => setShowAuthModal(false)}
+              className="text-gray-400 hover:text-white text-2xl"
+            >
+              ×
+            </button>
+          </div>
+
+          {authError && (
+            <div className="bg-red-900/50 border border-red-500 rounded-lg p-3 mb-4">
+              <p className="text-red-400 text-sm">{authError}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            {authMode === 'register' && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    placeholder="First Name"
+                    value={registerForm.firstName}
+                    onChange={(e) => setRegisterForm({...registerForm, firstName: e.target.value})}
+                    className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                    required
+                  />
+                  <input
+                    type="text"
+                    placeholder="Last Name"
+                    value={registerForm.lastName}
+                    onChange={(e) => setRegisterForm({...registerForm, lastName: e.target.value})}
+                    className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                    required
+                  />
+                </div>
+              </>
+            )}
+
+            <input
+              type="email"
+              placeholder="Email Address"
+              value={authMode === 'login' ? loginForm.email : registerForm.email}
+              onChange={(e) => {
+                if (authMode === 'login') {
+                  setLoginForm({...loginForm, email: e.target.value});
+                } else {
+                  setRegisterForm({...registerForm, email: e.target.value});
+                }
+              }}
+              className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+              required
+            />
+
+            <input
+              type="password"
+              placeholder="Password"
+              value={authMode === 'login' ? loginForm.password : registerForm.password}
+              onChange={(e) => {
+                if (authMode === 'login') {
+                  setLoginForm({...loginForm, password: e.target.value});
+                } else {
+                  setRegisterForm({...registerForm, password: e.target.value});
+                }
+              }}
+              className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+              required
+            />
+
+            {authMode === 'register' && (
+              <input
+                type="password"
+                placeholder="Confirm Password"
+                value={registerForm.confirmPassword}
+                onChange={(e) => setRegisterForm({...registerForm, confirmPassword: e.target.value})}
+                className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                required
+              />
+            )}
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-50 text-white py-3 rounded-lg font-semibold transition-colors"
+            >
+              {authLoading ? 'Please wait...' : (authMode === 'login' ? 'Login' : 'Create Account')}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <p className="text-gray-400">
+              {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}
+              <button
+                onClick={() => {
+                  setAuthMode(authMode === 'login' ? 'register' : 'login');
+                  setAuthError('');
+                }}
+                className="text-blue-400 hover:text-blue-300 ml-1 font-semibold"
+              >
+                {authMode === 'login' ? 'Sign up' : 'Login'}
+              </button>
+            </p>
+          </div>
+
+          {authMode === 'login' && (
+            <div className="mt-4 p-3 bg-slate-700/50 rounded-lg">
+              <p className="text-xs text-gray-400 text-center">
+                Demo Account: demo@trading.com / demo123
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  );
 
   if (!mounted) {
     return (
@@ -413,14 +603,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
       </div>
     );
   }
-
-  const handleNavigation = () => {
-    setShowTradingDashboard(true);
-  };
-
-  const handleBackToLanding = () => {
-    setShowTradingDashboard(false);
-  };
 
   // Show trading dashboard if requested
   if (showTradingDashboard) {
@@ -471,7 +653,7 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
                 Login
               </button>
               <button 
-                onClick={handleNavigation}
+                onClick={handleRegister}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
               >
                 Register
@@ -825,6 +1007,8 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
           </div>
         </div>
       </footer>
+
+      <AuthModal />
     </div>
   );
 }
