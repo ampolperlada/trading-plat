@@ -21,11 +21,11 @@ class DatabaseConfig {
       };
 
       this.connection = await mysql.createPool(config);
-      
+
       // Test the connection
       await this.connection.execute('SELECT 1');
       this.isConnected = true;
-      
+
       console.log('✅ MySQL database connected successfully');
       return true;
     } catch (error) {
