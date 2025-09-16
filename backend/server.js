@@ -9,6 +9,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const fetch = require('node-fetch');
 
+
 // Check if MongoDB is available, fallback to simple mode if not
 let useDatabase = true;
 let databaseConfig, TradingEngine, MarketDataService, AuthService;

@@ -49,10 +49,54 @@ const TradingDashboard = () => {
     { id: 'crypto', name: 'Crypto', icon: '₿' },
     { id: 'stocks', name: 'Stocks', icon: '📈' }
   ];
-
-  // Initialize and update market data
-  useEffect(() => {
-    const updatePrices = () => {
+// Initialize and update market data with real CoinGecko data
+useEffect(() => {
+  const fetchRealMarketData = async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/market-data');
+      const data = await response.json();
+      
+      setMarketData(prevData => {
+        const newData = {};
+        
+        // Update crypto assets with real CoinGecko data
+        Object.entries(data).forEach(([symbol, priceData]) => {
+          if (assets[symbol]) {
+            newData[symbol] = {
+              ...assets[symbol],
+              price: priceData.price,
+              change: priceData.change,
+              timestamp: priceData.timestamp
+            };
+          }
+        });
+        
+        // Keep forex and stocks with simulated data for now
+        Object.entries(assets).forEach(([symbol, asset]) => {
+          if (!newData[symbol] && asset.category !== 'crypto') {
+            const prevPrice = prevData[symbol]?.price || asset.price;
+            const variation = (Math.random() - 0.5) * 0.001;
+            const newPrice = prevPrice * (1 + variation);
+            const changePercent = ((newPrice - asset.price) / asset.price) * 100;
+            
+            newData[symbol] = {
+              ...asset,
+              price: Math.max(0.0001, newPrice),
+              change: changePercent,
+              timestamp: Date.now()
+            };
+          }
+        });
+        
+        return newData;
+      });
+      
+      setIsConnected(true);
+    } catch (error) {
+      console.error('Failed to fetch market data:', error);
+      setIsConnected(false);
+      
+      // Fallback to simulated data if API fails
       setMarketData(prevData => {
         const newData = {};
         Object.entries(assets).forEach(([symbol, asset]) => {
@@ -70,12 +114,13 @@ const TradingDashboard = () => {
         });
         return newData;
       });
-    };
+    }
+  };
 
-    updatePrices();
-    const interval = setInterval(updatePrices, 3000);
-    return () => clearInterval(interval);
-  }, []);
+  fetchRealMarketData();
+  const interval = setInterval(fetchRealMarketData, 30000); // Every 30 seconds
+  return () => clearInterval(interval);
+}, []);
 
   const formatPrice = (symbol, price) => {
     if (!price) return '0.00000';
