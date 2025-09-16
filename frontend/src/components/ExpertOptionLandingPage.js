@@ -17,6 +17,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import apiService from '../services/api';
+import UserProfile from '../components/UserProfile';
 
 // Trading Dashboard Component
 const TradingDashboard = () => {
