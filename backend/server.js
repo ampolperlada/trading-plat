@@ -7,6 +7,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const fetch = require('node-fetch');
 
 // Check if MongoDB is available, fallback to simple mode if not
 let useDatabase = true;
@@ -46,6 +47,11 @@ let redisService;
 let tradingEngine;
 let marketDataService;
 let authService;
+
+// Simple in-memory cache
+let marketDataCache = null;
+let lastFetch = 0;
+const CACHE_DURATION = 30000; // 30 seconds
 
 // Middleware setup
 app.use(helmet());
@@ -346,6 +352,126 @@ if (useDatabase) {
 
     res.json(mockAssets);
   });
+
+  // CoinGecko market data endpoint
+  app.get('/api/market-data', async (req, res) => {
+    const now = Date.now();
+    
+    // Return cached data if recent
+    if (marketDataCache && (now - lastFetch) < CACHE_DURATION) {
+      return res.json(marketDataCache);
+    }
+    
+    try {
+      // Fetch fresh data from CoinGecko
+      const coinGeckoIds = 'bitcoin,ethereum,cardano,dogecoin,chainlink,polkadot,litecoin,stellar';
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoIds}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_last_updated_at=true`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`CoinGecko API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Transform to trading platform format
+      marketDataCache = {
+        'BTC/USD': {
+          price: data.bitcoin?.usd || 0,
+          change: data.bitcoin?.usd_24h_change || 0,
+          volume: data.bitcoin?.usd_24h_vol || 0,
+          lastUpdated: data.bitcoin?.last_updated_at || Date.now()
+        },
+        'ETH/USD': {
+          price: data.ethereum?.usd || 0,
+          change: data.ethereum?.usd_24h_change || 0,
+          volume: data.ethereum?.usd_24h_vol || 0,
+          lastUpdated: data.ethereum?.last_updated_at || Date.now()
+        },
+        'ADA/USD': {
+          price: data.cardano?.usd || 0,
+          change: data.cardano?.usd_24h_change || 0,
+          volume: data.cardano?.usd_24h_vol || 0,
+          lastUpdated: data.cardano?.last_updated_at || Date.now()
+        },
+        'DOGE/USD': {
+          price: data.dogecoin?.usd || 0,
+          change: data.dogecoin?.usd_24h_change || 0,
+          volume: data.dogecoin?.usd_24h_vol || 0,
+          lastUpdated: data.dogecoin?.last_updated_at || Date.now()
+        },
+        'LINK/USD': {
+          price: data.chainlink?.usd || 0,
+          change: data.chainlink?.usd_24h_change || 0,
+          volume: data.chainlink?.usd_24h_vol || 0,
+          lastUpdated: data.chainlink?.last_updated_at || Date.now()
+        },
+        'DOT/USD': {
+          price: data.polkadot?.usd || 0,
+          change: data.polkadot?.usd_24h_change || 0,
+          volume: data.polkadot?.usd_24h_vol || 0,
+          lastUpdated: data.polkadot?.last_updated_at || Date.now()
+        },
+        'LTC/USD': {
+          price: data.litecoin?.usd || 0,
+          change: data.litecoin?.usd_24h_change || 0,
+          volume: data.litecoin?.usd_24h_vol || 0,
+          lastUpdated: data.litecoin?.last_updated_at || Date.now()
+        },
+        'XLM/USD': {
+          price: data.stellar?.usd || 0,
+          change: data.stellar?.usd_24h_change || 0,
+          volume: data.stellar?.usd_24h_vol || 0,
+          lastUpdated: data.stellar?.last_updated_at || Date.now()
+        }
+      };
+      
+      lastFetch = now;
+      res.json(marketDataCache);
+    } catch (error) {
+      console.error('CoinGecko API error:', error);
+      if (marketDataCache) {
+        res.json(marketDataCache);
+      } else {
+        res.status(500).json({ error: 'Failed to fetch market data' });
+      }
+    }
+  });
+
+  // Individual asset price endpoint
+  app.get('/api/market-data/:symbol', async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      
+      // Map symbols to CoinGecko IDs
+      const symbolMap = {
+        'BTC': 'bitcoin',
+        'ETH': 'ethereum',
+        'ADA': 'cardano',
+        'DOGE': 'dogecoin',
+        'LINK': 'chainlink',
+        'DOT': 'polkadot',
+        'LTC': 'litecoin',
+        'XLM': 'stellar'
+      };
+      
+      const coinId = symbolMap[symbol.toUpperCase()];
+      if (!coinId) {
+        return res.status(400).json({ error: 'Unsupported symbol' });
+      }
+      
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`
+      );
+      
+      const data = await response.json();
+      res.json(data[coinId]);
+    } catch (error) {
+      console.error('CoinGecko API error:', error);
+      res.status(500).json({ error: 'Failed to fetch price data' });
+    }
+  });
 }
 
 // WebSocket connection handling
@@ -419,37 +545,7 @@ if (useDatabase && errorHandler) {
   });
 }
 
-// Market data endpoint
-app.get('/api/market-data/:symbol', async (req, res) => {
-  try {
-    const { symbol } = req.params;
-    const fetch = require('node-fetch'); // You'll need: npm install node-fetch
-    
-    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${symbol}&vs_currencies=usd`);
-    const data = await response.json();
-    
-    res.json(data);
-  } catch (error) {
-    console.error('Market data error:', error);
-    res.status(500).json({ error: 'Failed to fetch market data' });
-  }
-});
-
-// Market data endpoint
-app.get('/api/market-data/:symbol', async (req, res) => {
-  try {
-    const { symbol } = req.params;
-    const fetch = require('node-fetch'); // You'll need: npm install node-fetch
-    
-    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${symbol}&vs_currencies=usd`);
-    const data = await response.json();
-    
-    res.json(data);
-  } catch (error) {
-    console.error('Market data error:', error);
-    res.status(500).json({ error: 'Failed to fetch market data' });
-  }
-});
+// Remove duplicate market data endpoint
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
