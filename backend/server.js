@@ -419,6 +419,37 @@ if (useDatabase && errorHandler) {
   });
 }
 
+// Market data endpoint
+app.get('/api/market-data/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const fetch = require('node-fetch'); // You'll need: npm install node-fetch
+    
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${symbol}&vs_currencies=usd`);
+    const data = await response.json();
+    
+    res.json(data);
+  } catch (error) {
+    console.error('Market data error:', error);
+    res.status(500).json({ error: 'Failed to fetch market data' });
+  }
+});
+
+// Market data endpoint
+app.get('/api/market-data/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const fetch = require('node-fetch'); // You'll need: npm install node-fetch
+    
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${symbol}&vs_currencies=usd`);
+    const data = await response.json();
+    
+    res.json(data);
+  } catch (error) {
+    console.error('Market data error:', error);
+    res.status(500).json({ error: 'Failed to fetch market data' });
+  }
+});
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
