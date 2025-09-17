@@ -1,63 +1,130 @@
-import React, { useContext, useState } from 'react';
-import { TradingContext } from '../../contexts/TradingContext';
-import Button from '../ui/Button';
+import React, { useState } from 'react';
+import axios from 'axios';
 
-const TradeForm = ({ asset, currentPrice }) => {
-  const { executeTrade, balance } = useContext(TradingContext);
+const TradeForm = ({ asset }) => {
   const [amount, setAmount] = useState(10);
-  const [expiry, setExpiry] = useState(60); // seconds
+  const [duration, setDuration] = useState(1);
+  const [tradeType, setTradeType] = useState('CALL');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleTrade = (type) => {
-    if (amount > balance) return alert("Insufficient balance!");
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setIsSubmitting(true);
 
-    const outcome = Math.random() > 0.5 ? "win" : "loss";
-    executeTrade(asset, type, amount, currentPrice, outcome);
+    try {
+      const response = await axios.post('/api/trades/create', {
+        asset: asset.symbol,
+        tradeType,
+        amount,
+        duration
+      });
+
+      // Show success toast
+      alert('Trade created successfully!');
+      // Reset form
+      setAmount(10);
+      setDuration(1);
+      setTradeType('CALL');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to create trade');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="bg-gray-800 p-6 rounded-xl shadow-lg max-w-md mx-auto mt-6">
-      <h3 className="text-white text-lg font-bold mb-4">Place Trade</h3>
-
-      <div className="space-y-4">
-        <div>
-          <label className="block text-gray-300 text-sm mb-1">Amount ($)</label>
-          <input
-            type="number"
-            min="1"
-            max={balance}
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value))}
-            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none"
-          />
-        </div>
-
-        <div>
-          <label className="block text-gray-300 text-sm mb-1">Expiry (sec)</label>
-          <select
-            value={expiry}
-            onChange={(e) => setExpiry(Number(e.target.value))}
-            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none"
-          >
-            <option value={30}>30 seconds</option>
-            <option value={60}>60 seconds</option>
-            <option value={120}>2 minutes</option>
-            <option value={300}>5 minutes</option>
-          </select>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 mt-6">
-          <Button onClick={() => handleTrade("CALL")} className="bg-green-600 hover:bg-green-700">
-            CALL
-          </Button>
-          <Button onClick={() => handleTrade("PUT")} className="bg-red-600 hover:red-700">
-            PUT
-          </Button>
+    <div className="bg-gray-800 p-6 rounded-lg">
+      <h3 className="text-xl font-bold mb-4">Trade {asset.name}</h3>
+      
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-2">Investment Amount</label>
+        <input
+          type="number"
+          value={amount}
+          onChange={(e) => setAmount(Number(e.target.value))}
+          min="1"
+          className="w-full p-2 border rounded"
+        />
+        <div className="flex space-x-2 mt-2">
+          {[10, 25, 50, 100, 250, 500].map(val => (
+            <button
+              key={val}
+              onClick={() => setAmount(val)}
+              className={`px-3 py-1 rounded ${
+                amount === val ? 'bg-blue-600' : 'bg-gray-700'
+              }`}
+            >
+              ${val}
+            </button>
+          ))}
         </div>
       </div>
 
-      <p className="text-xs text-gray-400 mt-4">
-        Current Price: <strong>${currentPrice?.toFixed(5)}</strong>
-      </p>
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-2">Expiry Time</label>
+        <div className="flex space-x-2">
+          {[1, 5, 15, 30, 60].map(min => (
+            <button
+              key={min}
+              onClick={() => setDuration(min)}
+              className={`px-3 py-1 rounded ${
+                duration === min ? 'bg-blue-600' : 'bg-gray-700'
+              }`}
+            >
+              {min}m
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-2">Prediction</label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setTradeType('PUT')}
+            className={`p-4 rounded-lg text-white ${
+              tradeType === 'PUT' ? 'bg-red-600' : 'bg-red-800'
+            }`}
+          >
+            <div className="text-2xl">↓</div>
+            <div className="text-sm">PUT</div>
+            <div className="text-xs">Lower</div>
+          </button>
+          <button
+            onClick={() => setTradeType('CALL')}
+            className={`p-4 rounded-lg text-white ${
+              tradeType === 'CALL' ? 'bg-green-600' : 'bg-green-800'
+            }`}
+          >
+            <div className="text-2xl">↑</div>
+            <div className="text-sm">CALL</div>
+            <div className="text-xs">Higher</div>
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-gray-700 p-3 rounded mb-4">
+        <div className="text-sm">Current Price</div>
+        <div className="text-xl font-bold">${asset.currentPrice.toFixed(2)}</div>
+      </div>
+
+      <div className="bg-gray-700 p-3 rounded mb-4">
+        <div className="text-sm">Payout</div>
+        <div className="text-green-400 font-bold">+{amount * 0.8}$</div>
+        <div className="text-sm">Investment: ${amount}</div>
+      </div>
+
+      {error && <div className="text-red-400 text-sm mb-4">{error}</div>}
+
+      <button
+        onClick={handleSubmit}
+        disabled={isSubmitting}
+        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white py-3 rounded-lg font-semibold transition"
+      >
+        {isSubmitting ? 'Processing...' : 'Place Trade'}
+      </button>
     </div>
   );
 };
