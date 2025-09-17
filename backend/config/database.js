@@ -3,7 +3,7 @@ const mysql = require('mysql2/promise');
 
 class DatabaseConfig {
   constructor() {
-    this.connection = null;
+    this.pool = null;
     this.isConnected = false;
   }
 
@@ -20,14 +20,14 @@ class DatabaseConfig {
         queueLimit: 0,
       };
 
-      this.connection = await mysql.createPool(config);
+      this.pool = await mysql.createPool(config);
 
       // Test the connection
-      await this.connection.execute('SELECT 1');
+      await this.pool.execute('SELECT 1');
       this.isConnected = true;
 
       console.log('✅ MySQL database connected successfully');
-      return true;
+      return this.pool;
     } catch (error) {
       console.error('❌ Database connection failed:', error.message);
       this.isConnected = false;
@@ -36,26 +36,53 @@ class DatabaseConfig {
   }
 
   getConnection() {
-    return this.connection;
+    return this.pool;
   }
 
-  // eslint-disable-next-line class-methods-use-this
+  getPool() {
+    return this.pool;
+  }
+
+  // Helper method for executing queries
+  async query(sql, params = []) {
+    if (!this.pool) {
+      throw new Error('Database not initialized. Call initializeDatabase() first.');
+    }
+    try {
+      const [rows] = await this.pool.execute(sql, params);
+      return rows;
+    } catch (error) {
+      console.error('Database query error:', error);
+      throw error;
+    }
+  }
+
   getMongoConnection() {
     return null;
   }
 
-  // eslint-disable-next-line class-methods-use-this
   getRedisClient() {
     return null;
   }
 
   async closeConnections() {
-    if (this.connection) {
-      await this.connection.end();
+    if (this.pool) {
+      await this.pool.end();
       this.isConnected = false;
       console.log('🔌 Database connection closed');
     }
   }
 }
 
-module.exports = new DatabaseConfig();
+const databaseConfig = new DatabaseConfig();
+
+// Export both the instance and helper functions
+module.exports = {
+  initializeDatabase: () => databaseConfig.initializeDatabase(),
+  getConnection: () => databaseConfig.getConnection(),
+  getPool: () => databaseConfig.getPool(),
+  query: (sql, params) => databaseConfig.query(sql, params),
+  closeConnections: () => databaseConfig.closeConnections(),
+  getMongoConnection: () => databaseConfig.getMongoConnection(),
+  getRedisClient: () => databaseConfig.getRedisClient()
+};
