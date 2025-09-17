@@ -1,4 +1,5 @@
-// backend/server.js - COMPLETE VERSION
+/* eslint-disable */
+
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
@@ -6,6 +7,11 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const fetch = require('node-fetch');
+const bcrypt = require('bcryptjs');
+const { query, initializeDatabase } = require('./config/database');
+const jwt = require('jsonwebtoken');
+
 
 // Check if MongoDB is available, fallback to simple mode if not
 let useDatabase = true;
@@ -45,6 +51,11 @@ let redisService;
 let tradingEngine;
 let marketDataService;
 let authService;
+
+// Simple in-memory cache
+let marketDataCache = null;
+let lastFetch = 0;
+const CACHE_DURATION = 30000; // 30 seconds
 
 // Middleware setup
 app.use(helmet());
@@ -179,8 +190,8 @@ app.get('/api/health', (req, res) => {
     status: 'ok', 
     timestamp: new Date().toISOString(),
     mode: useDatabase ? 'database' : 'simple',
-    mongodb: useDatabase ? !!databaseConfig?.getMongoConnection() : false,
-    redis: redisService?.isConnected || false,
+    mongodb: useDatabase ? !!databaseConfig.getMongoConnection() : false,
+    redis: (redisService && redisService.isConnected) || false,
     activeTrades: tradingEngine?.getActiveTrades()?.length || 0
   });
 });
@@ -218,60 +229,7 @@ if (useDatabase) {
     accountType: 'demo'
   };
 
-  // Add this to your backend/server.js after the health route
-
-// Simple trades endpoint for testing
-app.post('/api/trades', async (req, res) => {
-  try {
-    const { asset, tradeType, amount, duration } = req.body;
-    
-    // Simple validation
-    if (!asset || !tradeType || !amount || !duration) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    if (!['CALL', 'PUT'].includes(tradeType)) {
-      return res.status(400).json({ error: 'Invalid trade type' });
-    }
-
-    // Mock trade response (since we're in simple mode)
-    const trade = {
-      _id: 'trade_' + Date.now(),
-      asset,
-      tradeType,
-      amount,
-      duration,
-      openPrice: Math.random() * 1000 + 100, // Random price
-      openTime: new Date(),
-      result: 'pending'
-    };
-
-    res.json(trade);
-  } catch (error) {
-    console.error('Trade error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Assets endpoint
-app.get('/api/assets', (req, res) => {
-  const mockAssets = [
-    { symbol: 'EURUSD', name: 'Euro/US Dollar', category: 'forex', currentPrice: 1.09511, payout: 0.8 },
-    { symbol: 'GBPUSD', name: 'British Pound/US Dollar', category: 'forex', currentPrice: 1.25481, payout: 0.8 },
-    { symbol: 'USDJPY', name: 'US Dollar/Japanese Yen', category: 'forex', currentPrice: 150.58037, payout: 0.8 },
-    { symbol: 'BTCUSD', name: 'Bitcoin/US Dollar', category: 'crypto', currentPrice: 66104.38534, payout: 0.85 },
-    { symbol: 'ETHUSD', name: 'Ethereum/US Dollar', category: 'crypto', currentPrice: 3124.27865, payout: 0.85 },
-    { symbol: 'AAPL', name: 'Apple Inc', category: 'stocks', currentPrice: 156.61687, payout: 0.8 },
-    { symbol: 'TSLA', name: 'Tesla Inc', category: 'stocks', currentPrice: 250.87927, payout: 0.8 },
-    { symbol: 'GOOGL', name: 'Alphabet Inc', category: 'stocks', currentPrice: 143.61676, payout: 0.8 },
-    { symbol: 'GOLD', name: 'Gold', category: 'commodities', currentPrice: 2028.15778, payout: 0.8 },
-    { symbol: 'OIL', name: 'Crude Oil', category: 'commodities', currentPrice: 85.33382, payout: 0.8 }
-  ];
-
-  res.json(mockAssets);
-});
-
-  // Simple auth
+  // Simple auth login
   app.post('/api/auth/login', (req, res) => {
     try {
       const { email, password } = req.body;
@@ -303,6 +261,84 @@ app.get('/api/assets', (req, res) => {
     }
   });
 
+  // Simple auth register
+  app.post('/api/auth/register', (req, res) => {
+    try {
+      const { email, password, firstName, lastName, country } = req.body;
+      
+      // Basic validation
+      if (!email || !password || !firstName || !lastName) {
+        return res.status(400).json({ error: 'All fields are required' });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+
+      // Create user (in simple mode, just return demo response)
+      const user = {
+        id: Date.now(),
+        email: email.toLowerCase(),
+        firstName,
+        lastName,
+        country: country || 'US',
+        balance: 10000,
+        accountType: 'demo',
+        totalProfit: 0,
+        totalTrades: 0,
+        winRate: 0
+      };
+
+      // Generate JWT token
+      const token = jwt.sign(
+        { userId: user.id, email: user.email },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      res.status(201).json({
+        token,
+        user
+      });
+    } catch (error) {
+      console.error('Registration error:', error);
+      res.status(500).json({ error: 'Registration failed' });
+    }
+  });
+
+  // Simple trades endpoint
+  app.post('/api/trades', (req, res) => {
+    try {
+      const { asset, tradeType, amount, duration } = req.body;
+      
+      // Simple validation
+      if (!asset || !tradeType || !amount || !duration) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      if (!['CALL', 'PUT'].includes(tradeType)) {
+        return res.status(400).json({ error: 'Invalid trade type' });
+      }
+
+      // Mock trade response
+      const trade = {
+        _id: 'trade_' + Date.now(),
+        asset,
+        tradeType,
+        amount,
+        duration,
+        openPrice: Math.random() * 1000 + 100,
+        openTime: new Date(),
+        result: 'pending'
+      };
+
+      res.json(trade);
+    } catch (error) {
+      console.error('Trade error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // Simple assets endpoint
   app.get('/api/assets', (req, res) => {
     const mockAssets = [
@@ -319,6 +355,126 @@ app.get('/api/assets', (req, res) => {
     ];
 
     res.json(mockAssets);
+  });
+
+  // CoinGecko market data endpoint
+  app.get('/api/market-data', async (req, res) => {
+    const now = Date.now();
+    
+    // Return cached data if recent
+    if (marketDataCache && (now - lastFetch) < CACHE_DURATION) {
+      return res.json(marketDataCache);
+    }
+    
+    try {
+      // Fetch fresh data from CoinGecko
+      const coinGeckoIds = 'bitcoin,ethereum,cardano,dogecoin,chainlink,polkadot,litecoin,stellar';
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoIds}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_last_updated_at=true`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`CoinGecko API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Transform to trading platform format
+      marketDataCache = {
+        'BTC/USD': {
+          price: data.bitcoin?.usd || 0,
+          change: data.bitcoin?.usd_24h_change || 0,
+          volume: data.bitcoin?.usd_24h_vol || 0,
+          lastUpdated: data.bitcoin?.last_updated_at || Date.now()
+        },
+        'ETH/USD': {
+          price: data.ethereum?.usd || 0,
+          change: data.ethereum?.usd_24h_change || 0,
+          volume: data.ethereum?.usd_24h_vol || 0,
+          lastUpdated: data.ethereum?.last_updated_at || Date.now()
+        },
+        'ADA/USD': {
+          price: data.cardano?.usd || 0,
+          change: data.cardano?.usd_24h_change || 0,
+          volume: data.cardano?.usd_24h_vol || 0,
+          lastUpdated: data.cardano?.last_updated_at || Date.now()
+        },
+        'DOGE/USD': {
+          price: data.dogecoin?.usd || 0,
+          change: data.dogecoin?.usd_24h_change || 0,
+          volume: data.dogecoin?.usd_24h_vol || 0,
+          lastUpdated: data.dogecoin?.last_updated_at || Date.now()
+        },
+        'LINK/USD': {
+          price: data.chainlink?.usd || 0,
+          change: data.chainlink?.usd_24h_change || 0,
+          volume: data.chainlink?.usd_24h_vol || 0,
+          lastUpdated: data.chainlink?.last_updated_at || Date.now()
+        },
+        'DOT/USD': {
+          price: data.polkadot?.usd || 0,
+          change: data.polkadot?.usd_24h_change || 0,
+          volume: data.polkadot?.usd_24h_vol || 0,
+          lastUpdated: data.polkadot?.last_updated_at || Date.now()
+        },
+        'LTC/USD': {
+          price: data.litecoin?.usd || 0,
+          change: data.litecoin?.usd_24h_change || 0,
+          volume: data.litecoin?.usd_24h_vol || 0,
+          lastUpdated: data.litecoin?.last_updated_at || Date.now()
+        },
+        'XLM/USD': {
+          price: data.stellar?.usd || 0,
+          change: data.stellar?.usd_24h_change || 0,
+          volume: data.stellar?.usd_24h_vol || 0,
+          lastUpdated: data.stellar?.last_updated_at || Date.now()
+        }
+      };
+      
+      lastFetch = now;
+      res.json(marketDataCache);
+    } catch (error) {
+      console.error('CoinGecko API error:', error);
+      if (marketDataCache) {
+        res.json(marketDataCache);
+      } else {
+        res.status(500).json({ error: 'Failed to fetch market data' });
+      }
+    }
+  });
+
+  // Individual asset price endpoint
+  app.get('/api/market-data/:symbol', async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      
+      // Map symbols to CoinGecko IDs
+      const symbolMap = {
+        'BTC': 'bitcoin',
+        'ETH': 'ethereum',
+        'ADA': 'cardano',
+        'DOGE': 'dogecoin',
+        'LINK': 'chainlink',
+        'DOT': 'polkadot',
+        'LTC': 'litecoin',
+        'XLM': 'stellar'
+      };
+      
+      const coinId = symbolMap[symbol.toUpperCase()];
+      if (!coinId) {
+        return res.status(400).json({ error: 'Unsupported symbol' });
+      }
+      
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`
+      );
+      
+      const data = await response.json();
+      res.json(data[coinId]);
+    } catch (error) {
+      console.error('CoinGecko API error:', error);
+      res.status(500).json({ error: 'Failed to fetch price data' });
+    }
   });
 }
 
@@ -347,7 +503,7 @@ io.on('connection', (socket) => {
       } else {
         // Simple mode authentication
         const jwt = require('jsonwebtoken');
-        const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-production';
+        const JWT_SECRET = process.env.JWT_SECRET || 'TRADINGOPTION_SECRET_KEY@12345';
         
         const decoded = jwt.verify(token, JWT_SECRET);
         socket.userId = decoded.userId.toString();
@@ -393,76 +549,7 @@ if (useDatabase && errorHandler) {
   });
 }
 
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { email, password, firstName, lastName } = req.body;
-    
-    // For now, just create a simple demo response
-    const user = {
-      id: Date.now(),
-      email,
-      firstName: firstName || 'Demo',
-      lastName: lastName || 'User',
-      balance: 10000,
-      accountType: 'demo'
-    };
-
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '24h' }
-    );
-
-    res.json({ token, user });
-  } catch (error) {
-    res.status(500).json({ error: 'Registration failed' });
-  }
-});
-
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { email, password, firstName, lastName, country } = req.body;
-    
-    // Basic validation
-    if (!email || !password || !firstName || !lastName) {
-      return res.status(400).json({ error: 'All fields are required' });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
-    // Create user (in simple mode, just return demo response)
-    const user = {
-      id: Date.now(),
-      email: email.toLowerCase(),
-      firstName,
-      lastName,
-      country: country || 'US',
-      balance: 10000,
-      accountType: 'demo',
-      totalProfit: 0,
-      totalTrades: 0,
-      winRate: 0
-    };
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '24h' }
-    );
-
-    res.status(201).json({
-      token,
-      user
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
-  }
-});
-
+// Remove duplicate market data endpoint
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });

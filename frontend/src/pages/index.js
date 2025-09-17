@@ -1,28 +1,27 @@
-import { useEffect } from 'react';
-import { useRouter } from 'next/router';
+// src/pages/index.js - Expert Option Landing Page
+import { useEffect, useState } from 'react';
 import ExpertOptionClone from '../components/ExpertOptionClone';
+import ExpertOptionLandingPage from '../components/ExpertOptionLandingPage';
 
-export default function HomePage() {
-  const router = useRouter();
+export default function Home() {
+  const [mounted, setMounted] = useState(false);
+  const [showTrading, setShowTrading] = useState(false);
 
   useEffect(() => {
-    // Optional: Clear any existing auth data on fresh load
-    // This ensures clean state when landing on the main page
-    const urlParams = new URLSearchParams(window.location.search);
-    const clearAuth = urlParams.get('clear');
-    
-    if (clearAuth === 'true') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      // Remove the query param from URL without reload
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+    setMounted(true);
   }, []);
 
-  return (
-    <div>
-      {/* Expert Option Clone - Landing Page is Trading Interface */}
-      <ExpertOptionClone />
-    </div>
-  );
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-white">Loading ExpertOption...</div>
+      </div>
+    );
+  }
+
+  if (showTrading) {
+    return <ExpertOptionClone />;
+  }
+
+  return <ExpertOptionLandingPage onStartTrading={() => setShowTrading(true)} />;
 }
