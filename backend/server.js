@@ -8,6 +8,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const fetch = require('node-fetch');
+const bcrypt = require('bcryptjs');
+const { query, initializeDatabase } = require('./config/database');
+const jwt = require('jsonwebtoken');
 
 
 // Check if MongoDB is available, fallback to simple mode if not
