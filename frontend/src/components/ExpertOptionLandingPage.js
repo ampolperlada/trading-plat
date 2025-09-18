@@ -50,31 +50,58 @@ const TradingDashboard = () => {
     { id: 'crypto', name: 'Crypto', icon: '₿' },
     { id: 'stocks', name: 'Stocks', icon: '📈' }
   ];
-// Initialize and update market data with real CoinGecko data
-useEffect(() => {
-  const fetchRealMarketData = async () => {
-    try {
-      const response = await fetch('http://localhost:5001/api/market-data');
-      const data = await response.json();
-      
-      setMarketData(prevData => {
-        const newData = {};
+
+  // Initialize and update market data with real CoinGecko data
+  useEffect(() => {
+    const fetchRealMarketData = async () => {
+      try {
+        const response = await fetch('http://localhost:5001/api/market-data');
+        const data = await response.json();
         
-        // Update crypto assets with real CoinGecko data
-        Object.entries(data).forEach(([symbol, priceData]) => {
-          if (assets[symbol]) {
-            newData[symbol] = {
-              ...assets[symbol],
-              price: priceData.price,
-              change: priceData.change,
-              timestamp: priceData.timestamp
-            };
-          }
+        setMarketData(prevData => {
+          const newData = {};
+          
+          // Update crypto assets with real CoinGecko data
+          Object.entries(data).forEach(([symbol, priceData]) => {
+            if (assets[symbol]) {
+              newData[symbol] = {
+                ...assets[symbol],
+                price: priceData.price,
+                change: priceData.change,
+                timestamp: priceData.timestamp
+              };
+            }
+          });
+          
+          // Keep forex and stocks with simulated data for now
+          Object.entries(assets).forEach(([symbol, asset]) => {
+            if (!newData[symbol] && asset.category !== 'crypto') {
+              const prevPrice = prevData[symbol]?.price || asset.price;
+              const variation = (Math.random() - 0.5) * 0.001;
+              const newPrice = prevPrice * (1 + variation);
+              const changePercent = ((newPrice - asset.price) / asset.price) * 100;
+              
+              newData[symbol] = {
+                ...asset,
+                price: Math.max(0.0001, newPrice),
+                change: changePercent,
+                timestamp: Date.now()
+              };
+            }
+          });
+          
+          return newData;
         });
         
-        // Keep forex and stocks with simulated data for now
-        Object.entries(assets).forEach(([symbol, asset]) => {
-          if (!newData[symbol] && asset.category !== 'crypto') {
+        setIsConnected(true);
+      } catch (error) {
+        console.error('Failed to fetch market data:', error);
+        setIsConnected(false);
+        
+        // Fallback to simulated data if API fails
+        setMarketData(prevData => {
+          const newData = {};
+          Object.entries(assets).forEach(([symbol, asset]) => {
             const prevPrice = prevData[symbol]?.price || asset.price;
             const variation = (Math.random() - 0.5) * 0.001;
             const newPrice = prevPrice * (1 + variation);
@@ -86,42 +113,16 @@ useEffect(() => {
               change: changePercent,
               timestamp: Date.now()
             };
-          }
+          });
+          return newData;
         });
-        
-        return newData;
-      });
-      
-      setIsConnected(true);
-    } catch (error) {
-      console.error('Failed to fetch market data:', error);
-      setIsConnected(false);
-      
-      // Fallback to simulated data if API fails
-      setMarketData(prevData => {
-        const newData = {};
-        Object.entries(assets).forEach(([symbol, asset]) => {
-          const prevPrice = prevData[symbol]?.price || asset.price;
-          const variation = (Math.random() - 0.5) * 0.001;
-          const newPrice = prevPrice * (1 + variation);
-          const changePercent = ((newPrice - asset.price) / asset.price) * 100;
-          
-          newData[symbol] = {
-            ...asset,
-            price: Math.max(0.0001, newPrice),
-            change: changePercent,
-            timestamp: Date.now()
-          };
-        });
-        return newData;
-      });
-    }
-  };
+      }
+    };
 
-  fetchRealMarketData();
-  const interval = setInterval(fetchRealMarketData, 30000); // Every 30 seconds
-  return () => clearInterval(interval);
-}, []);
+    fetchRealMarketData();
+    const interval = setInterval(fetchRealMarketData, 30000); // Every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
 
   const formatPrice = (symbol, price) => {
     if (!price) return '0.00000';
@@ -172,9 +173,7 @@ useEffect(() => {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">EO</span>
-              </div>
+              <img src="/expertoption-logo.png" alt="ExpertOption" className="w-8 h-8" />
               <span className="text-xl font-bold text-white">ExpertOption</span>
             </div>
             <div className="flex items-center space-x-2">
@@ -668,14 +667,17 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-slate-800 to-purple-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white">
       {/* Header */}
       <header className="relative z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/50">
         <nav className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">
-              <button className="text-gray-400 hover:text-white transition-colors">
-                <Menu className="w-5 h-5" />
+              <button 
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="text-gray-400 hover:text-white transition-colors md:hidden"
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
               
               <div className="flex items-center space-x-2">
@@ -685,26 +687,44 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
             </div>
 
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">EO</span>
-              </div>
+              <img src="/expertoption-logo.png" alt="ExpertOption" className="w-8 h-8" />
               <span className="text-white text-lg font-bold">ExpertOption</span>
             </div>
 
-            <div className="flex items-center space-x-3">
+            <div className="hidden md:flex items-center space-x-3">
               <button 
                 onClick={handleNavigation}
-                className="text-gray-300 hover:text-white transition-colors text-sm px-4 py-2 rounded-lg border border-slate-600 hover:border-slate-500"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 text-sm"
               >
                 Login
               </button>
               <button 
                 onClick={handleRegister}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 text-sm"
               >
                 Register
               </button>
             </div>
+
+            {/* Mobile Menu */}
+            {mobileMenuOpen && (
+              <div className="absolute top-full left-0 right-0 bg-slate-900 border-t border-slate-700 md:hidden">
+                <div className="flex flex-col items-center space-y-4 py-4">
+                  <button 
+                    onClick={handleNavigation}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 w-full max-w-xs text-sm"
+                  >
+                    Login
+                  </button>
+                  <button 
+                    onClick={handleRegister}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 w-full max-w-xs text-sm"
+                  >
+                    Register
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </nav>
       </header>
@@ -755,7 +775,7 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
           {/* Phone Mockup */}
           <div className="relative flex justify-center lg:justify-start lg:ml-8">
             <div className="relative">
-              <div className="w-72 h-[520px] relative transform rotate-12">
+              <div className="w-72 h-[520px] relative transform rotate-3">
                 <div className="absolute inset-0 bg-gradient-to-b from-gray-800 to-gray-900 rounded-[2.5rem] shadow-2xl border-4 border-gray-600">
                   <div className="p-4 h-full flex flex-col">
                     <div className="flex justify-between items-center mb-4 text-white text-sm">
@@ -766,65 +786,35 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
                         <div className="w-1 h-1 bg-white rounded-full"></div>
                       </div>
                     </div>
-
                     <div className="flex-1 space-y-3">
-                      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 text-center relative overflow-hidden">
-                        <TrendingUp className="w-6 h-6 text-white mx-auto mb-2" />
-                        <span className="text-white font-semibold text-sm">Stocks</span>
-                      </div>
-                      
-                      <div className="bg-gradient-to-r from-blue-400 to-blue-500 rounded-xl p-4 text-center relative overflow-hidden">
-                        <Globe className="w-6 h-6 text-white mx-auto mb-2" />
-                        <span className="text-white font-semibold text-sm">Indices</span>
-                      </div>
-                      
-                      <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-4 text-center relative overflow-hidden">
-                        <Award className="w-6 h-6 text-white mx-auto mb-2" />
-                        <span className="text-white font-semibold text-sm">Metals</span>
-                      </div>
-                      
-                      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-4 text-center relative overflow-hidden">
-                        <Users className="w-6 h-6 text-white mx-auto mb-2" />
-                        <span className="text-white font-semibold text-sm">Commodities</span>
-                      </div>
-                      
-                      <div className="bg-gradient-to-r from-blue-700 to-blue-800 rounded-xl p-4 text-center relative overflow-hidden">
-                        <Shield className="w-6 h-6 text-white mx-auto mb-2" />
-                        <span className="text-white font-semibold text-sm">ETF</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="absolute -top-3 -right-3 bg-red-500 rounded-full w-8 h-8 flex items-center justify-center shadow-lg">
-                  <span className="text-white text-sm font-bold">7</span>
-                </div>
-                
-                <div className="absolute -bottom-3 -left-3 bg-blue-600 rounded-lg px-3 py-2 shadow-lg">
-                  <span className="text-white text-sm font-medium">Asset List</span>
-                </div>
-              </div>
-
-              <div className="absolute top-12 -right-6 w-52 h-80 bg-gradient-to-b from-gray-700 to-gray-800 rounded-xl border-2 border-gray-600 transform rotate-3 shadow-lg opacity-80">
-                <div className="p-3 h-full">
-                  <div className="space-y-1.5">
-                    <div className="h-3 bg-gray-600 rounded w-full"></div>
-                    <div className="h-2 bg-gray-600 rounded w-3/4"></div>
-                    <div className="space-y-1 mt-4">
-                      {Array.from({length: 15}, (_, i) => (
-                        <div key={i} className="h-1 bg-gray-600 rounded" style={{width: `${50 + Math.random() * 50}%`}}></div>
+                      {['Stocks', 'Indices', 'Metals', 'Commodities', 'ETF'].map((item, i) => (
+                        <div key={i} className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 text-center relative overflow-hidden">
+                          <div className="text-white font-semibold text-sm">{item}</div>
+                        </div>
                       ))}
                     </div>
                   </div>
                 </div>
-              </div>
-
-              <div className="absolute top-6 right-8 bg-blue-500 rounded-lg p-2 shadow-lg transform rotate-6">
-                <TrendingUp className="w-5 h-5 text-white" />
-              </div>
-
-              <div className="absolute bottom-16 -left-8 bg-green-500 rounded-lg p-2 shadow-lg transform -rotate-12">
-                <DollarSign className="w-4 h-4 text-white" />
+                {/* Floating asset list */}
+                <div className="absolute top-24 -right-12 w-64 h-64 bg-gray-700 rounded-lg border-2 border-gray-600 shadow-lg opacity-80">
+                  <div className="p-3 h-full">
+                    <div className="space-y-2">
+                      <div className="h-3 bg-gray-600 rounded w-full"></div>
+                      <div className="h-2 bg-gray-600 rounded w-3/4"></div>
+                      <div className="space-y-1 mt-2">
+                        {['Tesla', 'Apple', 'IBM', 'Google', 'Netflix', 'Facebook (META)'].map((asset, i) => (
+                          <div key={i} className="h-1 bg-gray-600 rounded" style={{width: `${50 + Math.random() * 50}%`}}></div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="absolute top-12 -right-6 bg-red-500 rounded-full w-8 h-8 flex items-center justify-center shadow-lg">
+                  <span className="text-white text-sm font-bold">T</span>
+                </div>
+                <div className="absolute bottom-16 -left-8 bg-blue-600 rounded-lg px-3 py-2 shadow-lg transform -rotate-12">
+                  <span className="text-white text-sm font-medium">Asset List</span>
+                </div>
               </div>
             </div>
           </div>
@@ -836,7 +826,7 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         <div className="container mx-auto px-4">
           <h2 className="text-4xl font-bold text-white text-center mb-12">For All Devices</h2>
           
-          <div className="grid md:grid-cols-4 gap-6">
+          <div className="grid md:grid-cols-4 gap-8">
             {[
               { icon: Smartphone, name: 'Android', desc: '4.4 and higher' },
               { icon: Smartphone, name: 'iOS', desc: '9.0 and higher' },
@@ -904,12 +894,12 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
             
             <button 
               onClick={handleNavigation}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium mb-6 transition-colors text-lg"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 text-lg"
             >
               Start trading
             </button>
 
-            <div className="bg-slate-700/30 rounded-lg p-4 max-w-sm mx-auto">
+            <div className="bg-slate-700/30 rounded-lg p-4 max-w-sm mx-auto mt-6">
               <div className="flex items-center space-x-3">
                 <Award className="w-8 h-8 text-blue-400 flex-shrink-0" />
                 <div className="text-left">
@@ -932,7 +922,7 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
               <h2 className="text-2xl font-bold text-white">Global Trading Platform</h2>
             </div>
             
-            <div className="grid grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
               {[
                 { value: '$1B', label: 'Minimum Deposit' },
                 { value: '$1', label: 'Minimum Trading Amount' },
@@ -948,8 +938,31 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
 
             <p className="text-gray-400 text-sm mb-6">People from 48 countries trade at ExpertOption</p>
 
-            <div className="relative h-48 bg-slate-800/20 rounded-xl flex items-center justify-center overflow-hidden">
-              <Globe className="w-12 h-12 text-blue-400/30" />
+            <div className="relative h-96 mt-12 mb-12">
+              <svg 
+                viewBox="0 0 1200 600" 
+                className="w-full h-full"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path 
+                  d="M600,300 m-200,0 a200,200 0 1,1 400,0 a200,200 0 1,1-400,0"
+                  stroke="#374151" 
+                  strokeWidth="1" 
+                  fill="none"
+                />
+                <g className="opacity-30">
+                  {Array.from({length: 100}).map((_, i) => (
+                    <circle 
+                      key={i}
+                      cx={Math.random() * 1200}
+                      cy={Math.random() * 600}
+                      r={Math.random() * 2 + 1}
+                      fill="#374151"
+                    />
+                  ))}
+                </g>
+              </svg>
             </div>
           </div>
         </div>
@@ -965,13 +978,13 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 
               onClick={handleNavigation}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-semibold transition-all transform hover:scale-105"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105"
             >
               Try Free Demo
             </button>
             <button 
               onClick={handleNavigation}
-              className="border-2 border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white px-8 py-3 rounded-lg font-semibold transition-all"
+              className="border-2 border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105"
             >
               Start Real Trading
             </button>
@@ -985,9 +998,7 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
           <div className="grid md:grid-cols-6 gap-8">
             <div className="md:col-span-2">
               <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">EO</span>
-                </div>
+                <img src="/expertoption-logo.png" alt="ExpertOption" className="w-8 h-8" />
                 <span className="text-white font-bold">ExpertOption</span>
               </div>
               <p className="text-gray-400 text-sm leading-relaxed">
@@ -1026,7 +1037,7 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
             <div>
               <h4 className="text-white font-semibold mb-4">Payment methods</h4>
               <div className="grid grid-cols-2 gap-2">
-                {['VISA', 'MC', 'PayPal', 'Skrill', 'Neteller', 'WebMoney'].map((method) => (
+                {['VISA', 'MC', 'PayPal', 'Skrill', 'Neteller', 'Binance Pay'].map((method) => (
                   <div key={method} className="bg-slate-800 rounded px-2 py-1 text-center">
                     <span className="text-white text-xs font-medium">{method}</span>
                   </div>

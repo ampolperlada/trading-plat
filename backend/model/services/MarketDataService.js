@@ -1,6 +1,6 @@
-
-// services/MarketDataService.js
-const Asset = require('../models/Asset');
+const fetch = require('node-fetch');
+const AssetMapper = require('./AssetMapper');
+const { io } = require('../server');
 
 class MarketDataService {
   constructor(io, redisService) {
@@ -8,7 +8,7 @@ class MarketDataService {
     this.redis = redisService;
     this.priceUpdateInterval = null;
     this.isRunning = false;
-    this.updateIntervalMs = 1000; // 1 second
+    this.updateIntervalMs = 5000; // 5 seconds
   }
 
   async start() {
@@ -17,10 +17,10 @@ class MarketDataService {
     this.isRunning = true;
     
     this.priceUpdateInterval = setInterval(() => {
-      this.updatePrices();
+      this.fetchRealPrices();
     }, this.updateIntervalMs);
 
-    console.log('📈 Market data service started');
+    console.log('📈 Market data service started (real-time)');
   }
 
   async stop() {
@@ -33,53 +33,99 @@ class MarketDataService {
       this.priceUpdateInterval = null;
     }
 
-    console.log('📈 Market data service stopped');
+    console.log('📉 Market data service stopped');
   }
 
-  async updatePrices() {
+  async fetchRealPrices() {
     try {
-      const assets = await Asset.find({ isActive: true });
+      const coinIds = AssetMapper.getAllCoinGeckoIds().join(',');
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinIds}&vs_currencies=usd&include_24hr_change=true`;
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+
+      const data = await response.json();
+
       const priceUpdates = [];
+      const assetsToUpdate = [];
 
-      for (const asset of assets) {
-        const newPrice = this.generateRealisticPrice(asset);
-        const priceChange = newPrice - asset.currentPrice;
-        const priceChangePercent = (priceChange / asset.currentPrice) * 100;
+      Object.keys(data).forEach(coinId => {
+        const symbol = AssetMapper.getPlatformSymbol(coinId);
+        if (!symbol) return;
 
-        asset.currentPrice = newPrice;
-        asset.priceChange = priceChange;
-        asset.priceChangePercent = priceChangePercent;
-        asset.lastUpdated = new Date();
-        
-        await asset.save();
+        const currentPrice = data[coinId].usd;
+        const changePercent = data[coinId].usd_24h_change || 0;
 
-        // Cache in Redis
-        if (this.redis) {
-          await this.redis.set(`price:${asset.symbol}`, {
-            price: newPrice,
-            timestamp: new Date().toISOString()
-          }, 60);
-        }
-
-        priceUpdates.push({
-          symbol: asset.symbol,
-          price: newPrice,
-          change: priceChange,
-          changePercent: priceChangePercent,
-          timestamp: asset.lastUpdated
+        // Update in DB
+        assetsToUpdate.push({
+          symbol,
+          currentPrice,
+          priceChangePercent: changePercent,
+          lastUpdated: new Date()
         });
-      }
+
+        // Prepare broadcast
+        priceUpdates.push({
+          symbol,
+          price: currentPrice,
+          changePercent,
+          timestamp: new Date().toISOString()
+        });
+      });
+
+      // Save to DB
+      await Promise.all(
+        assetsToUpdate.map(async asset => {
+          const existing = await Asset.findOne({ symbol: asset.symbol });
+          if (existing) {
+            existing.currentPrice = asset.currentPrice;
+            existing.priceChangePercent = asset.priceChangePercent;
+            existing.lastUpdated = asset.lastUpdated;
+            await existing.save();
+          }
+        })
+      );
 
       // Broadcast updates
       this.io.emit('price_update', priceUpdates);
-
-      for (const update of priceUpdates) {
+      priceUpdates.forEach(update => {
         this.io.to(`prices:${update.symbol}`).emit('asset_price', update);
-      }
+      });
 
     } catch (error) {
-      console.error('Error updating prices:', error);
+      console.error('Error fetching real prices:', error);
+      // Fallback to simulation
+      this.simulatePrices();
     }
+  }
+
+  async simulatePrices() {
+    // Fall back to your existing simulation logic
+    const assets = await Asset.find({ isActive: true });
+    const priceUpdates = [];
+
+    for (const asset of assets) {
+      const newPrice = this.generateRealisticPrice(asset);
+      const priceChange = newPrice - asset.currentPrice;
+      const priceChangePercent = (priceChange / asset.currentPrice) * 100;
+
+      asset.currentPrice = newPrice;
+      asset.priceChange = priceChange;
+      asset.priceChangePercent = priceChangePercent;
+      asset.lastUpdated = new Date();
+      
+      await asset.save();
+
+      priceUpdates.push({
+        symbol: asset.symbol,
+        price: newPrice,
+        change: priceChange,
+        changePercent: priceChangePercent,
+        timestamp: asset.lastUpdated
+      });
+    }
+
+    this.io.emit('price_update', priceUpdates);
   }
 
   generateRealisticPrice(asset) {
