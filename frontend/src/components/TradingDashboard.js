@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, BarChart3, Settings, User, LogOut, Wifi, DollarSign } from 'lucide-react';
+import io from 'socket.io-client';
+import apiService from './apiService'; // Assume this is your API service module
 
 export default function TradingDashboard() {
   const [user, setUser] = useState(null);
@@ -12,39 +14,92 @@ export default function TradingDashboard() {
   const [isPlacingTrade, setIsPlacingTrade] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTrades, setActiveTrades] = useState([]);
+  const [tradeHistory, setTradeHistory] = useState([]);
   const [loginData, setLoginData] = useState({ email: 'demo@trading.com', password: 'demo123' });
 
-  // Asset categories exactly from Image 1
+  // Asset categories
+  const assets = {
+    'EURUSD': { name: 'Euro/US Dollar' },
+    'GBPUSD': { name: 'British Pound' },
+    'USDJPY': { name: 'US Dollar' },
+    'BTCUSD': { name: 'Bitcoin' },
+    'ETHUSD': { name: 'Ethereum' },
+    'AAPL': { name: 'Apple Inc' },
+    'TSLA': { name: 'Tesla Inc' },
+    'GOOGL': { name: 'Alphabet Inc' },
+    'GOLD': { name: 'Gold' },
+    'OIL': { name: 'Crude Oil' }
+  };
+
   const assetCategories = {
     'All': ['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD', 'AAPL', 'TSLA', 'GOOGL', 'GOLD', 'OIL'],
     'Forex': ['EURUSD', 'GBPUSD', 'USDJPY'],
     'Crypto': ['BTCUSD', 'ETHUSD']
   };
 
-  // Initialize market data with exact prices from Image 1
+  // Initialize WebSocket and market data
   useEffect(() => {
-    const initialData = {
-      'EURUSD': { price: '1.17581', change: '+0.00%', name: 'Euro/US Dollar' },
-      'GBPUSD': { price: '1.27343', change: '+0.02%', name: 'British Pound' },
-      'USDJPY': { price: '150.57145', change: '+0.00%', name: 'US Dollar' },
-      'BTCUSD': { price: '66184.32960', change: '+0.04%', name: 'Bitcoin' },
-      'ETHUSD': { price: '3124.22214', change: '-0.01%', name: 'Ethereum' },
-      'AAPL': { price: '156.59099', change: '+0.02%', name: 'Apple Inc' },
-      'TSLA': { price: '258.91474', change: '+0.03%', name: 'Tesla Inc' },
-      'GOOGL': { price: '143.52432', change: '-0.04%', name: 'Alphabet Inc' },
-      'GOLD': { price: '2828.19752', change: '-0.04%', name: 'Gold' },
-      'OIL': { price: '85.35753', change: '-0.02%', name: 'Crude Oil' }
-    };
-    setMarketData(initialData);
-    generateChartData(initialData[selectedAsset]?.price || '1.17581');
-    
+    const socket = io('http://localhost:5000');
+
+    socket.on('connect', () => {
+      console.log('Connected to WebSocket');
+      socket.emit('subscribe_prices', Object.keys(assets));
+    });
+
+    socket.on('price_update', (data) => {
+      setMarketData(prev => ({
+        ...prev,
+        [data.symbol]: {
+          ...(prev[data.symbol] || assets[data.symbol]),
+          price: data.price,
+          change: data.changePercent,
+          timestamp: data.timestamp
+        }
+      }));
+    });
+
+    socket.on('trade_result', (result) => {
+      setActiveTrades(prev => prev.filter(t => t.id !== result._id));
+      if (result.result === 'win') {
+        setUser(prev => ({ ...prev, balance: prev.balance + result.profit }));
+      }
+      setTradeHistory(prev => [...prev, result]);
+    });
+
     // Check if user is logged in
     const userData = localStorage.getItem('user');
     if (userData) {
       setUser(JSON.parse(userData));
       setIsLoggedIn(true);
+      fetchUserData();
+      fetchHistory();
     }
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
+
+  // Fetch user data
+  const fetchUserData = async () => {
+    try {
+      const response = await apiService.get('/user/profile');
+      setUser(response.data);
+      localStorage.setItem('user', JSON.stringify(response.data));
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    }
+  };
+
+  // Fetch trade history
+  const fetchHistory = async () => {
+    try {
+      const response = await apiService.get('/trades/history');
+      setTradeHistory(response.data);
+    } catch (error) {
+      console.error('Error fetching trade history:', error);
+    }
+  };
 
   // Generate realistic candlestick chart data
   const generateChartData = (basePrice) => {
@@ -71,48 +126,33 @@ export default function TradingDashboard() {
     setChartData(data);
   };
 
-  // Real-time price updates every 2 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setMarketData(prev => {
-        const updated = { ...prev };
-        Object.keys(updated).forEach(symbol => {
-          const change = (Math.random() - 0.5) * 0.002;
-          const newPrice = (parseFloat(updated[symbol].price) + change).toFixed(5);
-          const changePercent = ((Math.random() - 0.5) * 0.1).toFixed(2);
-          updated[symbol] = {
-            ...updated[symbol],
-            price: newPrice,
-            change: `${changePercent >= 0 ? '+' : ''}${changePercent}%`
-          };
-        });
-        return updated;
-      });
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
   // Update chart when asset changes
   useEffect(() => {
-    if (marketData[selectedAsset]) {
+    if (marketData[selectedAsset]?.price) {
       generateChartData(marketData[selectedAsset].price);
     }
-  }, [selectedAsset]);
+  }, [selectedAsset, marketData]);
 
   // Login function
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (loginData.email && loginData.password) {
-      const userData = {
-        email: loginData.email,
-        balance: 10000,
-        accountType: 'Demo',
-        name: 'Demo User'
-      };
-      
-      setUser(userData);
-      setIsLoggedIn(true);
-      localStorage.setItem('user', JSON.stringify(userData));
-      localStorage.setItem('token', 'demo-token-' + Date.now());
+      try {
+        const userData = {
+          email: loginData.email,
+          balance: 10000,
+          accountType: 'Demo',
+          name: 'Demo User'
+        };
+        
+        setUser(userData);
+        setIsLoggedIn(true);
+        localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem('token', 'demo-token-' + Date.now());
+        await fetchUserData();
+        await fetchHistory();
+      } catch (error) {
+        console.error('Login error:', error);
+      }
     }
   };
 
@@ -120,11 +160,12 @@ export default function TradingDashboard() {
   const handleLogout = () => {
     setUser(null);
     setIsLoggedIn(false);
+    setTradeHistory([]);
     localStorage.removeItem('user');
     localStorage.removeItem('token');
   };
 
-  // Place trade function with real win/loss simulation
+  // Place trade function
   const placeTrade = async (direction) => {
     if (!isLoggedIn) {
       alert('Please login to start trading');
@@ -143,47 +184,24 @@ export default function TradingDashboard() {
       asset: selectedAsset,
       direction,
       amount: selectedAmount,
-      entryPrice: parseFloat(marketData[selectedAsset].price),
+      entryPrice: parseFloat(marketData[selectedAsset]?.price),
       timestamp: Date.now(),
-      expiryTime: Date.now() + (60 * 1000), // 1 minute expiry
+      expiryTime: Date.now() + (60 * 1000),
       status: 'active'
     };
 
-    setActiveTrades(prev => [...prev, trade]);
-    
-    // Deduct investment amount
-    setUser(prev => ({
-      ...prev,
-      balance: prev.balance - selectedAmount
-    }));
-
-    // Simulate trade result after 60 seconds
-    setTimeout(() => {
-      const currentPrice = parseFloat(marketData[selectedAsset].price);
-      const priceChange = currentPrice - trade.entryPrice;
-      
-      let isWin = false;
-      if (direction === 'CALL' && priceChange > 0) isWin = true;
-      if (direction === 'PUT' && priceChange < 0) isWin = true;
-      
-      const payout = isWin ? selectedAmount + (selectedAmount * 0.8) : 0;
-      
+    try {
+      await apiService.post('/trades/place', trade);
+      setActiveTrades(prev => [...prev, trade]);
       setUser(prev => ({
         ...prev,
-        balance: prev.balance + payout
+        balance: prev.balance - selectedAmount
       }));
-
-      setActiveTrades(prev => 
-        prev.map(t => 
-          t.id === trade.id 
-            ? { ...t, status: isWin ? 'won' : 'lost', payout, exitPrice: currentPrice }
-            : t
-        )
-      );
-
-      alert(`${direction} trade ${isWin ? 'WON' : 'LOST'}! ${isWin ? `+$${payout.toFixed(2)}` : `-$${selectedAmount.toFixed(2)}`}`);
-    }, 60000);
-
+    } catch (error) {
+      console.error('Error placing trade:', error);
+      alert('Failed to place trade');
+    }
+    
     setIsPlacingTrade(false);
   };
 
@@ -235,7 +253,6 @@ export default function TradingDashboard() {
           </div>
         </div>
 
-        {/* Timeframe buttons */}
         <div className="flex space-x-1 mb-4">
           {['1m', '5m', '15m', '30m', '1h', '4h', '1D'].map(tf => (
             <button
@@ -255,7 +272,6 @@ export default function TradingDashboard() {
         <svg width="100%" height="300" viewBox={`0 0 ${width} ${height}`} className="w-full">
           <rect width={width} height={height} fill="#1e293b" />
           
-          {/* Price grid lines */}
           {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
             const y = padding.top + chartHeight * ratio;
             const price = maxPrice - (priceRange * ratio);
@@ -283,7 +299,6 @@ export default function TradingDashboard() {
             );
           })}
 
-          {/* Candlesticks */}
           {chartData.map((candle, i) => {
             const x = padding.left + (i * (candleWidth + 2)) + (candleWidth / 2);
             const isGreen = candle.close > candle.open;
@@ -298,7 +313,6 @@ export default function TradingDashboard() {
 
             return (
               <g key={i}>
-                {/* Wick */}
                 <line
                   x1={x}
                   y1={yHigh}
@@ -307,7 +321,6 @@ export default function TradingDashboard() {
                   stroke={isGreen ? "#22c55e" : "#ef4444"}
                   strokeWidth="2"
                 />
-                {/* Body */}
                 <rect
                   x={x - candleWidth/2}
                   y={bodyTop}
@@ -321,7 +334,6 @@ export default function TradingDashboard() {
             );
           })}
 
-          {/* Current price line */}
           {marketData[selectedAsset] && (
             <>
               <line
@@ -360,9 +372,7 @@ export default function TradingDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex">
-      {/* Left Sidebar - Assets List */}
       <div className="w-72 bg-slate-800 border-r border-slate-700 flex flex-col">
-        {/* Logo */}
         <div className="p-4 border-b border-slate-700">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
@@ -372,7 +382,6 @@ export default function TradingDashboard() {
           </div>
         </div>
 
-        {/* Asset Categories */}
         <div className="p-3 border-b border-slate-700">
           <div className="flex space-x-1">
             {['All', 'Forex', 'Crypto'].map(category => (
@@ -391,7 +400,6 @@ export default function TradingDashboard() {
           </div>
         </div>
 
-        {/* Assets List */}
         <div className="flex-1 overflow-y-auto">
           {assetCategories[activeCategory].map(symbol => {
             const data = marketData[symbol];
@@ -426,20 +434,15 @@ export default function TradingDashboard() {
         </div>
       </div>
 
-      {/* Main Trading Area */}
       <div className="flex-1 flex flex-col">
-        {/* Chart Area */}
         <div className="flex-1 p-6">
           {renderChart()}
         </div>
       </div>
 
-      {/* Right Panel - Login/Trading */}
       <div className="w-80 bg-slate-800 border-l border-slate-700 flex flex-col">
-        {/* Top section - Login or User info */}
         <div className="p-4 border-b border-slate-700">
           {!isLoggedIn ? (
-            // Login Panel
             <div className="space-y-4">
               <div className="text-center">
                 <h3 className="text-xl font-bold mb-2">Login to Your Account</h3>
@@ -485,7 +488,6 @@ export default function TradingDashboard() {
               </div>
             </div>
           ) : (
-            // User Info when logged in
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -504,11 +506,9 @@ export default function TradingDashboard() {
           )}
         </div>
 
-        {/* Trading Panel - Always visible */}
         <div className="flex-1 p-4 space-y-4">
           <h3 className="text-lg font-bold">Trade</h3>
           
-          {/* Investment Amount */}
           <div>
             <label className="block text-sm text-gray-400 mb-2">Investment Amount</label>
             <div className="relative">
@@ -539,7 +539,6 @@ export default function TradingDashboard() {
             </div>
           </div>
 
-          {/* Current Price Display */}
           <div className="bg-slate-700 rounded-lg p-4">
             <div className="text-center">
               <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Current Price</div>
@@ -553,7 +552,6 @@ export default function TradingDashboard() {
             </div>
           </div>
 
-          {/* Trade Buttons */}
           <div className="space-y-3">
             <button
               onClick={() => placeTrade('CALL')}
@@ -574,7 +572,6 @@ export default function TradingDashboard() {
             </button>
           </div>
 
-          {/* Trade Info */}
           <div className="bg-slate-700 rounded-lg p-4">
             <div className="text-sm space-y-2">
               <div className="flex justify-between">
@@ -598,7 +595,6 @@ export default function TradingDashboard() {
             </div>
           </div>
 
-          {/* Login prompt when not logged in */}
           {!isLoggedIn && (
             <div className="bg-slate-700/30 rounded-lg p-4 text-center">
               <p className="text-sm text-gray-400">
@@ -607,7 +603,6 @@ export default function TradingDashboard() {
             </div>
           )}
 
-          {/* Active Trades */}
           {activeTrades.length > 0 && (
             <div className="bg-slate-700 rounded-lg p-4">
               <h4 className="text-sm font-semibold mb-2">Active Trades</h4>
@@ -625,6 +620,29 @@ export default function TradingDashboard() {
                     </div>
                     <div className="text-gray-400">
                       ${trade.amount} → {trade.status === 'won' ? `$${trade.payout?.toFixed(2)}` : '$0'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tradeHistory.length > 0 && (
+            <div className="bg-slate-700 rounded-lg p-4">
+              <h4 className="text-sm font-semibold mb-2">Trade History</h4>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {tradeHistory.slice(-3).map(trade => (
+                  <div key={trade._id} className="text-xs bg-slate-600 rounded p-2">
+                    <div className="flex justify-between">
+                      <span>{trade.asset} {trade.direction}</span>
+                      <span className={`font-semibold ${
+                        trade.result === 'win' ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {trade.result.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="text-gray-400">
+                      ${trade.amount} → {trade.result === 'win' ? `$${trade.profit?.toFixed(2)}` : '$0'}
                     </div>
                   </div>
                 ))}
