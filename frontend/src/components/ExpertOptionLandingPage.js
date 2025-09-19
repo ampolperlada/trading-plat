@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import io from 'socket.io-client';
 import { 
   Menu, 
   X, 
@@ -32,6 +33,8 @@ const TradingDashboard = () => {
   const [activeTrades, setActiveTrades] = useState([]);
   const [marketData, setMarketData] = useState({});
   const [isConnected, setIsConnected] = useState(true);
+  const [socket, setSocket] = useState(null); // Add socket state
+  const [tradeHistory, setTradeHistory] = useState([]); // Add trade history state
 
   // Mock market data
   const assets = {
@@ -51,77 +54,83 @@ const TradingDashboard = () => {
     { id: 'stocks', name: 'Stocks', icon: '📈' }
   ];
 
-  // Initialize and update market data with real CoinGecko data
+  // WebSocket connection and real-time price updates
   useEffect(() => {
-    const fetchRealMarketData = async () => {
+    // Connect to backend's Socket.IO server
+    const newSocket = io('http://localhost:5000'); // Adjust URL/port as needed
+
+    newSocket.on('connect', () => {
+      console.log('🟢 Connected to WebSocket server');
+      setIsConnected(true);
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('🔴 Disconnected from WebSocket server');
+      setIsConnected(false);
+    });
+
+    // Listen for real-time price updates
+    newSocket.on('price_update', (data) => {
+      if (Array.isArray(data)) {
+        setMarketData(prevData => {
+          const updatedData = { ...prevData };
+          data.forEach(update => {
+            if (assets[update.symbol]) {
+              updatedData[update.symbol] = {
+                ...assets[update.symbol],
+                price: update.price,
+                change: update.changePercent || update.change,
+                timestamp: update.timestamp
+              };
+            }
+          });
+          return updatedData;
+        });
+      }
+    });
+
+    // Listen for trade results
+    newSocket.on('trade_result', (closedTradeData) => {
+      console.log("Received trade result:", closedTradeData);
+      setActiveTrades(prev => prev.filter(t => t.id !== closedTradeData._id));
+      if (closedTradeData.result === 'win') {
+        setUser(prev => ({ ...prev, balance: prev.balance + closedTradeData.profit }));
+      }
+      setTradeHistory(prev => [closedTradeData, ...prev]);
+    });
+
+    setSocket(newSocket);
+
+    return () => {
+      console.log("🧹 Cleaning up WebSocket connection...");
+      newSocket.close();
+    };
+  }, []);
+
+  // Fetch trade history on mount
+  useEffect(() => {
+    const fetchHistory = async () => {
       try {
-        const response = await fetch('http://localhost:5001/api/market-data');
-        const data = await response.json();
-        
-        setMarketData(prevData => {
-          const newData = {};
-          
-          // Update crypto assets with real CoinGecko data
-          Object.entries(data).forEach(([symbol, priceData]) => {
-            if (assets[symbol]) {
-              newData[symbol] = {
-                ...assets[symbol],
-                price: priceData.price,
-                change: priceData.change,
-                timestamp: priceData.timestamp
-              };
-            }
-          });
-          
-          // Keep forex and stocks with simulated data for now
-          Object.entries(assets).forEach(([symbol, asset]) => {
-            if (!newData[symbol] && asset.category !== 'crypto') {
-              const prevPrice = prevData[symbol]?.price || asset.price;
-              const variation = (Math.random() - 0.5) * 0.001;
-              const newPrice = prevPrice * (1 + variation);
-              const changePercent = ((newPrice - asset.price) / asset.price) * 100;
-              
-              newData[symbol] = {
-                ...asset,
-                price: Math.max(0.0001, newPrice),
-                change: changePercent,
-                timestamp: Date.now()
-              };
-            }
-          });
-          
-          return newData;
+        const response = await fetch('http://localhost:5000/api/trades/history', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
         });
-        
-        setIsConnected(true);
-      } catch (error) {
-        console.error('Failed to fetch market data:', error);
-        setIsConnected(false);
-        
-        // Fallback to simulated data if API fails
-        setMarketData(prevData => {
-          const newData = {};
-          Object.entries(assets).forEach(([symbol, asset]) => {
-            const prevPrice = prevData[symbol]?.price || asset.price;
-            const variation = (Math.random() - 0.5) * 0.001;
-            const newPrice = prevPrice * (1 + variation);
-            const changePercent = ((newPrice - asset.price) / asset.price) * 100;
-            
-            newData[symbol] = {
-              ...asset,
-              price: Math.max(0.0001, newPrice),
-              change: changePercent,
-              timestamp: Date.now()
-            };
-          });
-          return newData;
-        });
+        const historyData = await response.json();
+        if (response.ok) {
+          setTradeHistory(historyData);
+        } else {
+          console.error("Failed to fetch history:", historyData.error);
+        }
+      } catch (err) {
+        console.error("Error fetching trade history:", err);
       }
     };
 
-    fetchRealMarketData();
-    const interval = setInterval(fetchRealMarketData, 30000); // Every 30 seconds
-    return () => clearInterval(interval);
+    if (localStorage.getItem('token')) {
+      fetchHistory();
+    }
   }, []);
 
   const formatPrice = (symbol, price) => {
@@ -133,37 +142,47 @@ const TradingDashboard = () => {
 
   const placeTrade = async (direction) => {
     const currentPrice = marketData[selectedAsset]?.price;
-    if (!currentPrice || user.balance < selectedAmount) return;
+    if (!currentPrice || user.balance < selectedAmount || !socket) return;
 
-    const trade = {
-      id: Date.now().toString(),
-      asset: selectedAsset,
-      direction,
-      amount: selectedAmount,
-      entryPrice: currentPrice,
-      timestamp: Date.now(),
-      expiryTime: Date.now() + (selectedTime * 1000),
-      status: 'active'
-    };
+    try {
+      const response = await fetch('http://localhost:5000/api/trades/place', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          asset: selectedAsset,
+          direction: direction,
+          amount: selectedAmount,
+          expiryTimeSeconds: selectedTime
+        })
+      });
 
-    setActiveTrades(prev => [...prev, trade]);
-    setUser(prev => ({ ...prev, balance: prev.balance - selectedAmount }));
+      const data = await response.json();
 
-    // Simulate trade result
-    setTimeout(() => {
-      const finalPrice = marketData[selectedAsset]?.price;
-      if (!finalPrice) return;
-
-      const priceChange = finalPrice - trade.entryPrice;
-      const isWin = (direction === 'CALL' && priceChange > 0) || (direction === 'PUT' && priceChange < 0);
-      const payout = isWin ? selectedAmount * 1.8 : 0;
-
-      if (isWin) {
-        setUser(prev => ({ ...prev, balance: prev.balance + payout }));
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to place trade');
       }
 
-      setActiveTrades(prev => prev.filter(t => t.id !== trade.id));
-    }, selectedTime * 1000);
+      console.log("✅ Trade placed successfully:", data.trade);
+      
+      const newTrade = {
+        id: data.trade._id,
+        asset: data.trade.asset,
+        direction: data.trade.direction,
+        amount: data.trade.amount,
+        entryPrice: data.trade.entryPrice,
+        timestamp: new Date(data.trade.createdAt).getTime(),
+        expiryTime: new Date(data.trade.expiryTime).getTime(),
+        status: 'active'
+      };
+      setActiveTrades(prev => [...prev, newTrade]);
+      setUser(prev => ({ ...prev, balance: prev.balance - selectedAmount }));
+    } catch (error) {
+      console.error("❌ Error placing trade:", error);
+      alert(`Failed to place trade: ${error.message}`);
+    }
   };
 
   return (
@@ -435,6 +454,42 @@ const TradingDashboard = () => {
                 </div>
               )}
             </div>
+
+            <h3 className="text-white font-medium mb-4 mt-6">Trade History ({tradeHistory.length})</h3>
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {tradeHistory.length > 0 ? (
+                tradeHistory.slice(0, 10).map(trade => (
+                  <div key={trade._id} className="bg-slate-700 rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-medium text-sm">{trade.asset}</span>
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${
+                        trade.result === 'win' ? 'bg-green-600' : trade.result === 'loss' ? 'bg-red-600' : 'bg-yellow-600'
+                      }`}>
+                        {trade.result?.toUpperCase() || 'PENDING'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>${trade.amount.toFixed(2)}</span>
+                      <span>{trade.direction}</span>
+                    </div>
+                    {trade.result && (
+                      <div className="text-xs text-gray-400">
+                        Profit: <span className={trade.result === 'win' ? 'text-green-400' : 'text-red-400'}>
+                          ${trade.profit?.toFixed(2) || '0.00'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500 mt-1">
+                      {new Date(trade.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center text-gray-400 py-8 text-sm">
+                  No trade history
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -448,11 +503,10 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
   const [mounted, setMounted] = useState(false);
   const [showTradingDashboard, setShowTradingDashboard] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+  const [authMode, setAuthMode] = useState('login');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
-  
-  // Authentication form data
+
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [registerForm, setRegisterForm] = useState({
     firstName: '',
@@ -489,11 +543,9 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         });
       }
 
-      // Store token and user data
       localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
       
-      // Redirect to trading dashboard
       setShowTradingDashboard(true);
       setShowAuthModal(false);
       
@@ -649,7 +701,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
     );
   }
 
-  // Show trading dashboard if requested
   if (showTradingDashboard) {
     return (
       <div>
@@ -668,7 +719,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white">
-      {/* Header */}
       <header className="relative z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/50">
         <nav className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
@@ -706,7 +756,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
               </button>
             </div>
 
-            {/* Mobile Menu */}
             {mobileMenuOpen && (
               <div className="absolute top-full left-0 right-0 bg-slate-900 border-t border-slate-700 md:hidden">
                 <div className="flex flex-col items-center space-y-4 py-4">
@@ -729,7 +778,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         </nav>
       </header>
 
-      {/* Hero Section */}
       <section className="container mx-auto px-4 py-12">
         <div className="grid lg:grid-cols-2 gap-8 items-center">
           <div className="space-y-6">
@@ -772,7 +820,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
             </button>
           </div>
 
-          {/* Phone Mockup */}
           <div className="relative flex justify-center lg:justify-start lg:ml-8">
             <div className="relative">
               <div className="w-72 h-[520px] relative transform rotate-3">
@@ -795,7 +842,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
                     </div>
                   </div>
                 </div>
-                {/* Floating asset list */}
                 <div className="absolute top-24 -right-12 w-64 h-64 bg-gray-700 rounded-lg border-2 border-gray-600 shadow-lg opacity-80">
                   <div className="p-3 h-full">
                     <div className="space-y-2">
@@ -821,7 +867,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         </div>
       </section>
 
-      {/* For All Devices */}
       <section className="bg-slate-800/50 py-16">
         <div className="container mx-auto px-4">
           <h2 className="text-4xl font-bold text-white text-center mb-12">For All Devices</h2>
@@ -845,7 +890,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         </div>
       </section>
 
-      {/* How It Works */}
       <section className="py-16">
         <div className="container mx-auto px-4">
           <h2 className="text-4xl font-bold text-white text-center mb-12">How It Works</h2>
@@ -880,7 +924,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         </div>
       </section>
 
-      {/* Trusted Section */}
       <section className="bg-slate-800/50 py-12">
         <div className="container mx-auto px-4">
           <div className="text-center">
@@ -913,7 +956,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         </div>
       </section>
 
-      {/* Global Trading Platform */}
       <section className="py-12">
         <div className="container mx-auto px-4">
           <div className="text-center">
@@ -968,7 +1010,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         </div>
       </section>
 
-      {/* Final CTA */}
       <section className="bg-slate-800/50 py-16">
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to Start Trading?</h2>
@@ -992,7 +1033,6 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="bg-slate-900 border-t border-slate-700">
         <div className="container mx-auto px-4 py-12">
           <div className="grid md:grid-cols-6 gap-8">
