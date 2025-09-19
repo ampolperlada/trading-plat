@@ -88,9 +88,11 @@ class MarketDataService {
 
       // Broadcast updates
       this.io.emit('price_update', priceUpdates);
-      priceUpdates.forEach(update => {
-        this.io.to(`prices:${update.symbol}`).emit('asset_price', update);
-      });
+      // Inside updatePrices() or fetchRealPrices()
+// After updating prices in DB/cache
+priceUpdates.forEach(update => {
+  this.io.to(`prices:${update.symbol}`).emit('price_update', update);
+});
 
     } catch (error) {
       console.error('Error fetching real prices:', error);
