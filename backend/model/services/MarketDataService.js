@@ -86,13 +86,15 @@ class MarketDataService {
         })
       );
 
-      // Broadcast updates
+      // Broadcast updates ONCE per update cycle
       this.io.emit('price_update', priceUpdates);
-      // Inside updatePrices() or fetchRealPrices()
-// After updating prices in DB/cache
-priceUpdates.forEach(update => {
-  this.io.to(`prices:${update.symbol}`).emit('price_update', update);
-});
+
+      // Optional: Room-based broadcasting for scalability
+      /*
+      priceUpdates.forEach(update => {
+        this.io.to(`prices:${update.symbol}`).emit('price_update', update);
+      });
+      */
 
     } catch (error) {
       console.error('Error fetching real prices:', error);
@@ -102,7 +104,6 @@ priceUpdates.forEach(update => {
   }
 
   async simulatePrices() {
-    // Fall back to your existing simulation logic
     const assets = await Asset.find({ isActive: true });
     const priceUpdates = [];
 
