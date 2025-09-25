@@ -2,11 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const authenticateToken = require('../middleware/auth'); // Adjust path as needed
-const Trade = require('../models/Trade'); // Adjust path as needed
-// We need to access the tradingEngine instance from server.js
-// A common way is to attach it to the app object or use a singleton/service locator
-// For simplicity here, assuming you have access to it somehow (e.g., global, or passed in)
-// Let's assume it's attached to the app object in server.js: app.locals.tradingEngine = tradingEngine;
+const { query } = require('../config/database'); // Import the query helper
 
 router.post('/place', authenticateToken, async (req, res) => {
   try {
@@ -28,57 +24,53 @@ router.post('/place', authenticateToken, async (req, res) => {
     }
     // --- End Validation ---
 
-    // --- Get User Balance (if using User model) ---
-    // const User = require('../models/User');
-    // const user = await User.findById(userId);
-    // if (!user) {
-    //     return res.status(404).json({ error: 'User not found.' });
-    // }
-    // if (user.balance < amount) {
-    //     return res.status(400).json({ error: 'Insufficient balance.' });
-    // }
+    // --- Get User Balance ---
+    const users = await query('SELECT balance FROM users WHERE id = ?', [userId]);
+    if (users.length === 0) {
+        return res.status(404).json({ error: 'User not found.' });
+    }
+    const user = users[0];
+    if (user.balance < amount) {
+        return res.status(400).json({ error: 'Insufficient balance.' });
+    }
     // --- End User Balance ---
 
     // --- Get Entry Price (from Market Data Service or Asset model) ---
-    // const marketDataService = require('../services/MarketDataService');
-    // const priceData = await marketDataService.getPrice(asset);
-    // const entryPrice = priceData.price;
-    // For now, simulate or use a default
-    const entryPrice = Math.random() * 100 + 50; // Placeholder
+    // For now, simulate or fetch from your asset table
+    const assets = await query('SELECT current_price FROM assets WHERE symbol = ?', [asset]);
+    if (assets.length === 0) {
+        return res.status(404).json({ error: 'Asset not found.' });
+    }
+    const entryPrice = assets[0].current_price;
     // --- End Entry Price ---
 
-    // --- Create Trade Document ---
-    const expiryTime = new Date(Date.now() + (expiryTimeSeconds * 1000));
-    const newTrade = new Trade({
-        userId,
-        asset,
-        direction,
-        amount,
-        entryPrice,
-        expiryTime,
-        status: 'open',
-        result: 'pending'
-        // closePrice, closeTime, profit will be set later by TradingEngine
-    });
+    // --- Create Trade Record in MySQL ---
+    // Calculate expiration time based on current time and duration
+    const expirationTime = new Date(Date.now() + (expiryTimeSeconds * 1000));
+    const result = await query(`
+      INSERT INTO trades (user_id, asset, trade_type, amount, duration, open_price, expiration_time, status, result) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [userId, asset, direction, amount, expiryTimeSeconds, entryPrice, expirationTime, 'open', 'pending']);
 
-    const savedTrade = await newTrade.save();
-    console.log(`🆕 Trade saved to DB: ${savedTrade._id}`);
-    // --- End Create Trade ---
+    const newTradeId = result.insertId;
+    console.log(`🆕 Trade saved to DB with ID: ${newTradeId}`);
 
-    // --- Deduct Balance (if using User model) ---
-    // user.balance -= amount;
-    // await user.save();
-    // --- End Deduct Balance ---
+    // --- Deduct Balance ---
+    await query('UPDATE users SET balance = balance - ? WHERE id = ?', [amount, userId]);
 
     // --- Notify Trading Engine ---
     // Access tradingEngine (assuming it's attached to app.locals)
     const tradingEngine = req.app.locals.tradingEngine;
     if (tradingEngine) {
-        tradingEngine.handleNewTrade(savedTrade);
+        // Fetch the trade record to pass to the engine
+        const tradeRecords = await query('SELECT * FROM trades WHERE id = ?', [newTradeId]);
+        if (tradeRecords.length > 0) {
+            tradingEngine.handleNewTrade(tradeRecords[0]);
+        } else {
+            console.error(`🚨 Could not fetch newly created trade ${newTradeId} for engine.`);
+        }
     } else {
         console.error("🚨 TradingEngine not found in app.locals!");
-        // Depending on your setup, you might want to handle this differently
-        // e.g., return an error or rely on the periodic check/loadPendingTrades
     }
     // --- End Notify Engine ---
 
@@ -86,7 +78,17 @@ router.post('/place', authenticateToken, async (req, res) => {
     res.status(201).json({
         success: true,
         message: 'Trade placed successfully',
-        trade: savedTrade
+        trade: {
+            id: newTradeId, // Return the MySQL ID
+            userId,
+            asset,
+            trade_type: direction, // Or direction
+            amount,
+            open_price: entryPrice, // Or entryPrice
+            duration: expiryTimeSeconds, // Or selectedTime
+            status: 'open',
+            expiration_time: expirationTime
+        }
     });
     // --- End Respond ---
 
@@ -100,8 +102,13 @@ router.post('/place', authenticateToken, async (req, res) => {
 router.get('/history', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id;
-        // Fetch last N trades, or implement pagination
-        const trades = await Trade.find({ userId }).sort({ createdAt: -1 }).limit(50);
+        // Fetch last N trades for the user, or implement pagination
+        const trades = await query(`
+          SELECT * FROM trades 
+          WHERE user_id = ? 
+          ORDER BY open_time DESC 
+          LIMIT 50
+        `, [userId]);
         res.json(trades);
     } catch (error) {
         console.error('Error fetching trade history:', error);
