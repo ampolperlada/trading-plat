@@ -15,9 +15,43 @@ import {
   Users,
   DollarSign,
   CreditCard,
-  CheckCircle
+  CheckCircle,
+  Activity
 } from 'lucide-react';
 import apiService from '../services/api';
+
+// Custom styles for animations
+const floatingAnimation = `
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(0px) rotate(3deg); }
+  50% { transform: translateY(-10px) rotate(3deg); }
+}
+.animate-bounce-slow {
+  animation: bounce-slow 3s ease-in-out infinite;
+}
+`;
+
+const additionalStyles = `
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+.gradient-text {
+  background: linear-gradient(45deg, #3b82f6, #06b6d4, #8b5cf6);
+  background-size: 300% 300%;
+  animation: gradient-shift 3s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+`;
 
 // Trading Dashboard Component
 const TradingDashboard = () => {
@@ -182,7 +216,9 @@ const TradingDashboard = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-2">
-              <img src="/expertoption-logo.png" alt="ExpertOption" className="w-8 h-8" />
+              <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
+                <span className="text-white text-xs font-bold">EO</span>
+              </div>
               <span className="text-2xl font-bold">ExpertOption</span>
             </div>
             <div className="flex items-center space-x-2">
@@ -296,11 +332,19 @@ const TradingDashboard = () => {
           </div>
           
           <div className="flex-1 p-6">
-            <div className="h-full bg-slate-800 rounded-xl flex items-center justify-center">
-              <div className="text-center">
-                <TrendingUp className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-                <h3 className="text-2xl font-bold mb-2">Live Chart</h3>
-                <p className="text-slate-300 text-sm">Real-time price movements for {selectedAsset}</p>
+            <div className="h-full bg-slate-800 rounded-xl flex flex-col">
+              <div className="p-4 border-b border-slate-700">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-300">Price Movement</span>
+                  <span className="text-emerald-400">+0.12%</span>
+                </div>
+              </div>
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <Activity className="w-16 h-16 text-blue-400 mx-auto mb-4" />
+                  <p className="text-slate-300">Live market data</p>
+                  <p className="text-slate-400 text-sm">Real-time price updates</p>
+                </div>
               </div>
             </div>
           </div>
@@ -651,7 +695,7 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
               type="submit"
               disabled={authLoading}
               onClick={handleAuth}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 transform hover:scale-[1.02] disabled:bg-blue-800 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+              className="w-full bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 active:scale-95"
             >
               {authLoading ? 'Please wait...' : (authMode === 'login' ? 'Login' : 'Create Account')}
             </button>
@@ -698,7 +742,7 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
         <div className="absolute top-4 left-4 z-50">
           <button
             onClick={handleBackToLanding}
-            className="bg-slate-700 hover:bg-slate-600 text-slate-100 px-6 py-3 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+            className="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 active:scale-95"
           >
             ← Back to Landing
           </button>
@@ -709,7 +753,16 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-slate-100 relative">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-3/4 right-1/4 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 w-32 h-32 bg-purple-500/5 rounded-full blur-2xl animate-bounce"></div>
+      </div>
+      
+      <style>{floatingAnimation}</style>
+      <style>{additionalStyles}</style>
+
       <header className="bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/50">
         <nav className="container mx-auto p-6">
           <div className="flex items-center justify-between">
@@ -728,20 +781,22 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
             </div>
 
             <div className="flex items-center space-x-2">
-              <img src="/expertoption-logo.png" alt="ExpertOption" className="w-8 h-8" />
+              <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
+                <span className="text-white text-xs font-bold">EO</span>
+              </div>
               <span className="text-slate-100 text-lg font-bold">ExpertOption</span>
             </div>
 
             <div className="hidden md:flex items-center space-x-6">
               <button 
                 onClick={handleNavigation}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+                className="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 active:scale-95"
               >
                 Login
               </button>
               <button 
                 onClick={handleRegister}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+                className="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 active:scale-95"
               >
                 Register
               </button>
@@ -752,13 +807,13 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
                 <div className="flex flex-col items-center space-y-6 p-6">
                   <button 
                     onClick={handleNavigation}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 transform hover:scale-[1.02] w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+                    className="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 active:scale-95 w-full max-w-xs"
                   >
                     Login
                   </button>
                   <button 
                     onClick={handleRegister}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 transform hover:scale-[1.02] w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+                    className="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 active:scale-95 w-full max-w-xs"
                   >
                     Register
                   </button>
@@ -772,9 +827,9 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
       <section className="container mx-auto p-6">
         <div className="grid lg:grid-cols-2 gap-6 items-center">
           <div className="space-y-6">
-            <h1 className="text-2xl font-bold leading-tight">
-              <span className="text-blue-600">Investing</span> Is<br />
-              Even Better Now
+            <h1 className="text-5xl lg:text-6xl font-bold leading-tight">
+              <span className="text-blue-400 bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent animate-pulse">Investing</span> Is<br />
+              <span className="inline-block hover:scale-105 transition-transform duration-300">Even Better Now</span>
             </h1>
             
             <p className="text-slate-300 text-base leading-relaxed max-w-md">
@@ -804,7 +859,7 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
 
             <button 
               onClick={handleNavigation}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 transform hover:scale-[1.02] flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+              className="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 active:scale-95 flex items-center space-x-2"
             >
               <span>Try free demo</span>
               <Play className="w-5 h-5 fill-current" />
@@ -813,7 +868,7 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
 
           <div className="relative flex justify-center lg:justify-start lg:ml-8">
             <div className="relative">
-              <div className="w-72 h-[520px] relative transform rotate-3">
+              <div className="w-72 h-[520px] relative transform rotate-3 hover:rotate-6 transition-transform duration-700 animate-bounce-slow">
                 <div className="absolute inset-0 bg-gradient-to-b from-slate-800 to-slate-900 rounded-xl shadow-2xl border-4 border-slate-600">
                   <div className="p-6 h-full flex flex-col">
                     <div className="flex justify-between items-center mb-4 text-slate-100 text-sm">
@@ -869,12 +924,12 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
               { icon: Monitor, name: 'Windows', desc: '7 and higher' },
               { icon: Monitor, name: 'MacOS', desc: 'Macintosh and Safari' }
             ].map((platform, i) => (
-              <div key={i} className="text-center group">
-                <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:bg-blue-700 transition-all duration-200">
-                  <platform.icon className="w-8 h-8 text-slate-100" />
+              <div key={i} className="text-center group cursor-pointer">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shadow-lg group-hover:shadow-blue-500/25">
+                  <platform.icon className="w-8 h-8 text-white group-hover:scale-110 transition-transform duration-300" />
                 </div>
-                <h3 className="text-slate-100 font-semibold text-lg mb-1">{platform.name}</h3>
-                <p className="text-slate-300 text-sm">{platform.desc}</p>
+                <h3 className="text-white font-semibold text-lg mb-1 group-hover:text-blue-400 transition-colors duration-300">{platform.name}</h3>
+                <p className="text-slate-400 text-sm group-hover:text-slate-300 transition-colors duration-300">{platform.desc}</p>
               </div>
             ))}
           </div>
@@ -928,7 +983,7 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
             
             <button 
               onClick={handleNavigation}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+              className="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 active:scale-95"
             >
               Start trading
             </button>
@@ -962,40 +1017,23 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
                 { value: '0%', label: 'Commissions' },
                 { value: '0%', label: 'Fees' }
               ].map((stat, i) => (
-                <div key={i} className="text-center">
-                  <div className="text-2xl font-bold text-blue-600 mb-1">{stat.value}</div>
-                  <div className="text-slate-100 text-sm font-medium">{stat.label}</div>
+                <div key={i} className="text-center group cursor-pointer">
+                  <div className="bg-slate-800/50 rounded-xl p-6 group-hover:bg-slate-700/50 transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg">
+                    <div className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-2 group-hover:scale-110 transition-transform duration-300">{stat.value}</div>
+                    <div className="text-slate-300 text-sm font-medium group-hover:text-white transition-colors duration-300">{stat.label}</div>
+                  </div>
                 </div>
               ))}
             </div>
 
             <p className="text-slate-300 text-sm mb-6">People from 48 countries trade at ExpertOption</p>
 
-            <div className="relative h-96 mt-12 mb-12">
-              <svg 
-                viewBox="0 0 1200 600" 
-                className="w-full h-full"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path 
-                  d="M600,300 m-200,0 a200,200 0 1,1 400,0 a200,200 0 1,1-400,0"
-                  stroke="#374151" 
-                  strokeWidth="1" 
-                  fill="none"
-                />
-                <g className="opacity-30">
-                  {Array.from({length: 100}).map((_, i) => (
-                    <circle 
-                      key={i}
-                      cx={Math.random() * 1200}
-                      cy={Math.random() * 600}
-                      r={Math.random() * 2 + 1}
-                      fill="#374151"
-                    />
-                  ))}
-                </g>
-              </svg>
+            <div className="relative h-96 mt-12 mb-12 bg-slate-800/30 rounded-xl flex items-center justify-center">
+              <div className="text-center">
+                <Globe className="w-16 h-16 text-blue-400 mx-auto mb-4" />
+                <p className="text-slate-300">Global Trading Network</p>
+                <p className="text-slate-400 text-sm">Connected worldwide</p>
+              </div>
             </div>
           </div>
         </div>
@@ -1010,13 +1048,13 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
           <div className="flex flex-col sm:flex-row gap-6 justify-center">
             <button 
               onClick={handleNavigation}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+              className="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 active:scale-95"
             >
               Try Free Demo
             </button>
             <button 
               onClick={handleNavigation}
-              className="border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+              className="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 active:scale-95"
             >
               Start Real Trading
             </button>
@@ -1029,7 +1067,9 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
           <div className="grid md:grid-cols-6 gap-6">
             <div className="md:col-span-2">
               <div className="flex items-center space-x-2 mb-4">
-                <img src="/expertoption-logo.png" alt="ExpertOption" className="w-8 h-8" />
+                <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">EO</span>
+                </div>
                 <span className="text-slate-100 font-bold">ExpertOption</span>
               </div>
               <p className="text-slate-300 text-sm leading-relaxed">
