@@ -76,7 +76,7 @@ const animations = `
 `;
 
 // Trading Dashboard Component
-const TradingDashboard = () => {
+const TradingDashboard = ({ handleBackToLanding }) => {
   const [selectedAsset, setSelectedAsset] = useState('EUR/USD');
   const [selectedAmount, setSelectedAmount] = useState(10);
   const [selectedTime, setSelectedTime] = useState(60);
@@ -97,6 +97,7 @@ const TradingDashboard = () => {
   const [stopLoss, setStopLoss] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
   const [marketNews, setMarketNews] = useState([]);
+  const [chartPoints, setChartPoints] = useState([]);
 
   const assets = {
     'EUR/USD': { name: 'Euro / US Dollar', price: 1.08945, change: 0.12, category: 'forex', icon: '💱' },
@@ -117,33 +118,37 @@ const TradingDashboard = () => {
 
   useEffect(() => {
     const newSocket = io('http://localhost:5000');
+
     newSocket.on('connect', () => {
-      console.log('🟢 Connected to WebSocket server');
+      console.log('Connected to WebSocket server');
       setIsConnected(true);
     });
 
     newSocket.on('disconnect', () => {
-      console.log('🔴 Disconnected from WebSocket server');
+      console.log('Disconnected from WebSocket server');
       setIsConnected(false);
     });
 
-    newSocket.on('price_update', (data) => {
-      if (Array.isArray(data)) {
-        setMarketData(prevData => {
-          const updatedData = { ...prevData };
-          data.forEach(update => {
-            if (assets[update.symbol]) {
-              updatedData[update.symbol] = {
-                ...assets[update.symbol],
-                price: update.price,
-                change: update.changePercent || update.change,
-                timestamp: update.timestamp
-              };
-            }
-          });
-          return updatedData;
+    // Listen for real price updates from CoinGecko service
+    newSocket.on('price_update', (priceUpdates) => {
+      console.log('Received price updates:', priceUpdates);
+      
+      setMarketData(prevData => {
+        const updatedData = { ...prevData };
+        
+        priceUpdates.forEach(update => {
+          if (assets[update.symbol]) {
+            updatedData[update.symbol] = {
+              ...assets[update.symbol],
+              price: update.price,
+              change: update.changePercent,
+              timestamp: update.timestamp
+            };
+          }
         });
-      }
+        
+        return updatedData;
+      });
     });
 
     newSocket.on('trade_result', (closedTradeData) => {
@@ -157,7 +162,7 @@ const TradingDashboard = () => {
 
     setSocket(newSocket);
     return () => {
-      console.log("🧹 Cleaning up WebSocket connection...");
+      console.log("Cleaning up WebSocket connection...");
       newSocket.close();
     };
   }, []);
@@ -186,6 +191,24 @@ const TradingDashboard = () => {
       fetchHistory();
     }
   }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentPrice = marketData[selectedAsset]?.price || assets[selectedAsset]?.price || 1.08945;
+      const newPoint = {
+        time: Date.now(),
+        price: currentPrice + (Math.random() - 0.5) * 0.001, // Small random variation
+        volume: Math.random() * 1000
+      };
+      
+      setChartPoints(prev => {
+        const updated = [...prev, newPoint];
+        return updated.slice(-50); // Keep last 50 points
+      });
+    }, 2000); // Update every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [selectedAsset, marketData]);
 
   const formatPrice = (symbol, price) => {
     if (!price) return '0.00000';
@@ -221,7 +244,7 @@ const TradingDashboard = () => {
         throw new Error(data.error || 'Failed to place trade');
       }
 
-      console.log("✅ Trade placed successfully:", data.trade);
+      console.log("Trade placed successfully:", data.trade);
       
       const newTrade = {
         id: data.trade._id,
@@ -239,104 +262,116 @@ const TradingDashboard = () => {
       setActiveTrades(prev => [...prev, newTrade]);
       setUser(prev => ({ ...prev, balance: prev.balance - selectedAmount }));
     } catch (error) {
-      console.error("❌ Error placing trade:", error);
+      console.error("Error placing trade:", error);
       alert(`Failed to place trade: ${error.message}`);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100">
-      {/* Trading Dashboard Header */}
-      <header className="bg-slate-800 border-b border-slate-700 p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
-                <span className="text-white text-xs font-bold">EO</span>
-              </div>
-              <span className="text-2xl font-bold">ExpertOption</span>
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+      {/* Professional Trading Header */}
+      <header className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center space-x-6">
+          {/* Back Button */}
+          <button
+            onClick={handleBackToLanding}
+            className="flex items-center space-x-2 px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-sm transition-colors"
+          >
+            <span>←</span>
+            <span>Back</span>
+          </button>
+          
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
+              <span className="text-white text-xs font-bold">EO</span>
             </div>
-            <div className="flex items-center space-x-2">
-              {isConnected ? (
-                <div className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse"></div>
-              ) : (
-                <div className="w-2 h-2 bg-rose-600 rounded-full"></div>
-              )}
-              <span className={`text-sm ${isConnected ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {isConnected ? 'Live' : 'Offline'}
-              </span>
+            <span className="text-lg font-semibold">ExpertOption Pro</span>
+            <div className="flex items-center space-x-2 ml-4">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-green-400 text-xs font-medium">LIVE</span>
             </div>
           </div>
+          
+          {/* Quick Actions */}
+          <div className="flex items-center space-x-2">
+            <button className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs">Watchlist</button>
+            <button className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs">News</button>
+            <button className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs">Analysis</button>
+          </div>
+        </div>
 
-          <div className="flex items-center space-x-6">
-            <div className="bg-slate-700 rounded-lg p-6">
-              <div className="text-center">
-                <div className="text-slate-300 text-sm">Balance</div>
-                <div className="text-emerald-400 font-bold text-lg">
-                  ${user.balance.toFixed(2)}
-                </div>
-              </div>
+        <div className="flex items-center space-x-4">
+          <div className="text-right">
+            <div className="text-xs text-slate-400">Account Balance</div>
+            <div className="text-lg font-bold text-green-400">${user.balance.toFixed(2)}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-slate-400">P&L Today</div>
+            <div className="text-lg font-bold text-green-400">+$127.50</div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+              <span className="text-white text-xs">{user.name.charAt(0)}</span>
             </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <span className="text-slate-100 text-sm">{user.name.charAt(0)}</span>
-              </div>
-              <span className="text-slate-100">{user.name}</span>
-            </div>
+            <span className="text-sm">{user.name}</span>
           </div>
         </div>
       </header>
 
-      <div className="flex h-[calc(100vh-73px)]">
-        {/* Left Panel - Assets */}
-        <div className="w-80 bg-slate-800 border-r border-slate-700 flex flex-col">
-          <div className="p-6 border-b border-slate-700">
-            <div className="grid grid-cols-4 gap-6">
+      {/* Main Trading Interface */}
+      <div className="flex-1 flex">
+        {/* Left Sidebar - Market Watch */}
+        <div className="w-72 bg-slate-900 border-r border-slate-800 flex flex-col">
+          <div className="p-3 border-b border-slate-800">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Market Watch</h3>
+              <button className="text-xs text-blue-400 hover:text-blue-300">+ Add Symbol</button>
+            </div>
+            <div className="flex space-x-1">
               {categories.map(category => (
                 <button
                   key={category.id}
-                  className="p-2 rounded-lg text-sm bg-slate-700 text-slate-300 hover:bg-slate-600 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+                  className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded"
                 >
-                  <div className="text-center">
-                    <div className="text-sm mb-1">{category.icon}</div>
-                    <div>{category.name}</div>
-                  </div>
+                  {category.name}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            <div className="grid grid-cols-4 gap-1 p-2 text-xs text-slate-400 font-medium border-b border-slate-800">
+              <span>Symbol</span>
+              <span>Bid</span>
+              <span>Ask</span>
+              <span>Change</span>
+            </div>
+            
             {Object.entries(assets).map(([symbol, asset]) => {
               const data = marketData[symbol] || asset;
               const isSelected = selectedAsset === symbol;
+              const bid = data.price - 0.0001;
+              const ask = data.price + 0.0001;
               
               return (
                 <button
                   key={symbol}
                   onClick={() => setSelectedAsset(symbol)}
-                  className={`w-full p-6 text-left hover:bg-slate-700 transition-all duration-200 border-l-4 ${
-                    isSelected ? 'bg-slate-700 border-blue-500' : 'border-transparent'
-                  } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800`}
+                  className={`w-full grid grid-cols-4 gap-1 p-2 text-xs hover:bg-slate-800 transition-colors ${
+                    isSelected ? 'bg-slate-800 border-l-2 border-blue-500' : ''
+                  }`}
                 >
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center space-x-3">
-                      <span className="text-lg">{asset.icon}</span>
-                      <div>
-                        <div className="font-bold text-base">{symbol}</div>
-                        <div className="text-sm text-slate-300">{asset.name}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-mono text-base font-semibold">
-                        {formatPrice(symbol, data.price)}
-                      </div>
-                      <div className={`text-xs font-bold ${
-                        data.change >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                      }`}>
-                        {data.change >= 0 ? '+' : ''}{data.change.toFixed(2)}%
-                      </div>
-                    </div>
+                  <div className="text-left">
+                    <div className="font-medium">{symbol}</div>
+                  </div>
+                  <div className="font-mono text-slate-300">
+                    {formatPrice(symbol, bid)}
+                  </div>
+                  <div className="font-mono text-slate-300">
+                    {formatPrice(symbol, ask)}
+                  </div>
+                  <div className={`font-bold ${data.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {data.change >= 0 ? '+' : ''}{data.change.toFixed(2)}%
                   </div>
                 </button>
               );
@@ -344,337 +379,309 @@ const TradingDashboard = () => {
           </div>
         </div>
 
-        {/* Center Panel - Chart */}
+        {/* Center - Chart and Order Entry */}
         <div className="flex-1 flex flex-col">
-          <div className="bg-slate-800 p-4 border-b border-slate-700">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-2xl font-bold">{selectedAsset}</h2>
-                <p className="text-slate-300 text-sm">{assets[selectedAsset]?.name}</p>
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-mono font-bold animate-pulse">
+          {/* Symbol Header */}
+          <div className="bg-slate-900 p-4 border-b border-slate-800">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <h2 className="text-xl font-bold">{selectedAsset}</h2>
+                <div className="text-2xl font-mono font-bold">
                   {formatPrice(selectedAsset, marketData[selectedAsset]?.price)}
                 </div>
-                <div className={`text-lg font-semibold ${
-                  (marketData[selectedAsset]?.change || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                <div className={`flex items-center space-x-1 ${
+                  (marketData[selectedAsset]?.change || 0) >= 0 ? 'text-green-400' : 'text-red-400'
                 }`}>
-                  {(marketData[selectedAsset]?.change || 0) >= 0 ? '↗' : '↘'} 
-                  {(marketData[selectedAsset]?.change || 0).toFixed(2)}%
+                  {(marketData[selectedAsset]?.change || 0) >= 0 ? '▲' : '▼'}
+                  <span className="font-semibold">
+                    {Math.abs(marketData[selectedAsset]?.change || 0).toFixed(2)}%
+                  </span>
                 </div>
               </div>
-            </div>
-            
-            {/* Trading Mode Selector */}
-            <div className="flex space-x-2">
-              {['binary', 'forex', 'crypto'].map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => setTradingMode(mode)}
-                  className={`px-3 py-1 rounded text-xs font-medium transition-all ${
-                    tradingMode === mode 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
-                >
-                  {mode.toUpperCase()}
-                </button>
-              ))}
+              
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-slate-400">Spread:</span>
+                <span className="text-xs font-mono">0.2</span>
+                <span className="text-xs text-slate-400">Swap:</span>
+                <span className="text-xs font-mono text-red-400">-1.5</span>
+              </div>
             </div>
           </div>
-          
-          <div className="flex-1 grid grid-cols-3 gap-4 p-4">
-            {/* Main Chart */}
-            <div className="col-span-2 bg-slate-800 rounded-xl p-4">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">Price Chart</h3>
-                <div className="flex space-x-2">
-                  {['1m', '5m', '15m', '1h', '4h', '1d'].map(interval => (
-                    <button key={interval} className="px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs transition-all">
-                      {interval}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="h-64 bg-slate-900 rounded-lg flex items-center justify-center relative overflow-hidden">
-                {/* Simulated Chart Lines */}
-                <svg className="absolute inset-0 w-full h-full">
-                  <defs>
-                    <linearGradient id="priceGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3"/>
-                      <stop offset="100%" stopColor="#3b82f6" stopOpacity="0"/>
-                    </linearGradient>
-                  </defs>
-                  <path 
-                    d="M 0 150 Q 50 120, 100 140 T 200 130 T 300 110 T 400 125"
-                    stroke="#3b82f6" 
-                    strokeWidth="2" 
-                    fill="none"
-                    className="animate-pulse"
-                  />
-                  <path 
-                    d="M 0 150 Q 50 120, 100 140 T 200 130 T 300 110 T 400 125 L 400 250 L 0 250 Z"
-                    fill="url(#priceGradient)"
-                  />
-                </svg>
-                <div className="text-center z-10">
-                  <Activity className="w-8 h-8 text-blue-400 mx-auto mb-2" />
-                  <p className="text-slate-300 text-sm">Live Price Data</p>
-                </div>
-              </div>
-            </div>
 
-            {/* Order Book & Market Depth */}
-            <div className="bg-slate-800 rounded-xl p-4">
-              <h3 className="text-lg font-semibold mb-4">Order Book</h3>
-              <div className="space-y-2">
-                <div className="text-xs text-slate-400 grid grid-cols-3 gap-2">
-                  <span>Price</span>
-                  <span>Size</span>
-                  <span>Total</span>
-                </div>
-                {/* Mock order book data */}
-                {Array.from({length: 8}).map((_, i) => (
-                  <div key={i} className="text-xs grid grid-cols-3 gap-2">
-                    <span className="text-rose-400">{(1.08945 + i * 0.0001).toFixed(5)}</span>
-                    <span className="text-slate-300">{(Math.random() * 100).toFixed(1)}</span>
-                    <span className="text-slate-400">{(Math.random() * 1000).toFixed(0)}</span>
-                  </div>
-                ))}
-                <div className="border-t border-slate-700 pt-2">
-                  <div className="text-center text-lg font-mono font-bold text-blue-400">
-                    {formatPrice(selectedAsset, marketData[selectedAsset]?.price)}
+          {/* Chart Area */}
+          <div className="flex-1 p-4">
+            <div className="h-full bg-slate-900 rounded-lg border border-slate-800">
+              <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <h3 className="font-semibold">Price Chart</h3>
+                  <div className="flex space-x-1">
+                    {['1M', '5M', '15M', '1H', '4H', '1D'].map(timeframe => (
+                      <button key={timeframe} className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded">
+                        {timeframe}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                {Array.from({length: 8}).map((_, i) => (
-                  <div key={i} className="text-xs grid grid-cols-3 gap-2">
-                    <span className="text-emerald-400">{(1.08945 - i * 0.0001).toFixed(5)}</span>
-                    <span className="text-slate-300">{(Math.random() * 100).toFixed(1)}</span>
-                    <span className="text-slate-400">{(Math.random() * 1000).toFixed(0)}</span>
+                <div className="flex items-center space-x-2">
+                  <button className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded">Indicators</button>
+                  <button className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded">Drawing Tools</button>
+                </div>
+              </div>
+              
+              {/* Real Working Chart */}
+              <div className="p-4 h-96">
+                <div className="w-full h-full bg-slate-950 rounded relative overflow-hidden">
+                  <svg className="w-full h-full" viewBox="0 0 800 300">
+                    {/* Grid lines */}
+                    <defs>
+                      <pattern id="grid" width="40" height="30" patternUnits="userSpaceOnUse">
+                        <path d="M 40 0 L 0 0 0 30" fill="none" stroke="#374151" strokeWidth="0.5" opacity="0.3"/>
+                      </pattern>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#grid)" />
+                    
+                    {/* Price line */}
+                    <path
+                      d="M 50 150 L 100 140 L 150 145 L 200 135 L 250 130 L 300 125 L 350 135 L 400 140 L 450 138 L 500 142 L 550 145 L 600 148 L 650 152 L 700 150 L 750 155"
+                      stroke="#3b82f6"
+                      strokeWidth="2"
+                      fill="none"
+                      className="animate-pulse"
+                    />
+                    
+                    {/* Area under curve */}
+                    <path
+                      d="M 50 150 L 100 140 L 150 145 L 200 135 L 250 130 L 300 125 L 350 135 L 400 140 L 450 138 L 500 142 L 550 145 L 600 148 L 650 152 L 700 150 L 750 155 L 750 300 L 50 300 Z"
+                      fill="url(#priceGradient)"
+                      opacity="0.3"
+                    />
+                    
+                    {/* Gradient definition */}
+                    <defs>
+                      <linearGradient id="priceGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.4"/>
+                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0"/>
+                      </linearGradient>
+                    </defs>
+                    
+                    {/* Current price line */}
+                    <line
+                      x1="0"
+                      y1="145"
+                      x2="800"
+                      y2="145"
+                      stroke="#10b981"
+                      strokeWidth="1"
+                      strokeDasharray="5,5"
+                      opacity="0.8"
+                    />
+                    
+                    {/* Price labels */}
+                    <text x="760" y="140" fill="#10b981" fontSize="12" fontFamily="monospace">
+                      {formatPrice(selectedAsset, marketData[selectedAsset]?.price)}
+                    </text>
+                    
+                    {/* Candlesticks for more realism */}
+                    {Array.from({length: 20}).map((_, i) => {
+                      const x = 50 + i * 35;
+                      const isGreen = Math.random() > 0.5;
+                      const height = Math.random() * 20 + 5;
+                      const y = 140 + (Math.random() - 0.5) * 40;
+                      
+                      return (
+                        <g key={i}>
+                          <line
+                            x1={x}
+                            y1={y - height/2 - 5}
+                            x2={x}
+                            y2={y + height/2 + 5}
+                            stroke={isGreen ? "#10b981" : "#ef4444"}
+                            strokeWidth="1"
+                          />
+                          <rect
+                            x={x - 3}
+                            y={isGreen ? y - height/2 : y}
+                            width="6"
+                            height={height}
+                            fill={isGreen ? "#10b981" : "#ef4444"}
+                          />
+                        </g>
+                      );
+                    })}
+                  </svg>
+                  
+                  {/* Chart overlay info */}
+                  <div className="absolute top-4 left-4 bg-slate-800/80 rounded p-2 text-xs">
+                    <div className="grid grid-cols-4 gap-4">
+                      <div>
+                        <div className="text-slate-400">Open</div>
+                        <div className="text-white font-mono">1.08912</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400">High</div>
+                        <div className="text-green-400 font-mono">1.08967</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400">Low</div>
+                        <div className="text-red-400 font-mono">1.08901</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400">Close</div>
+                        <div className="text-white font-mono">{formatPrice(selectedAsset, marketData[selectedAsset]?.price)}</div>
+                      </div>
+                    </div>
                   </div>
-                ))}
+                  
+                  {/* Volume bars at bottom */}
+                  <div className="absolute bottom-4 left-4 right-4 h-12 flex items-end space-x-1">
+                    {Array.from({length: 50}).map((_, i) => (
+                      <div
+                        key={i}
+                        className="bg-blue-500/30 flex-1"
+                        style={{ height: `${Math.random() * 100}%` }}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Panel - Trading */}
-        <div className="w-80 bg-slate-800 border-l border-slate-700 flex flex-col">
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold">Trade Panel</h2>
-              <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span className="text-xs text-slate-400">Live</span>
+        {/* Right Panel - Trading Interface */}
+        <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col">
+          {/* Account Summary */}
+          <div className="p-4 border-b border-slate-800">
+            <h3 className="text-sm font-semibold mb-3">Account Summary</h3>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="bg-slate-800 rounded p-2">
+                <div className="text-slate-400">Balance</div>
+                <div className="font-bold text-green-400">${user.balance.toFixed(2)}</div>
+              </div>
+              <div className="bg-slate-800 rounded p-2">
+                <div className="text-slate-400">Equity</div>
+                <div className="font-bold">${user.balance.toFixed(2)}</div>
+              </div>
+              <div className="bg-slate-800 rounded p-2">
+                <div className="text-slate-400">Margin</div>
+                <div className="font-bold text-blue-400">${(user.balance * 0.1).toFixed(2)}</div>
+              </div>
+              <div className="bg-slate-800 rounded p-2">
+                <div className="text-slate-400">Free Margin</div>
+                <div className="font-bold text-green-400">${(user.balance * 0.9).toFixed(2)}</div>
               </div>
             </div>
-            
-            {/* Trading Mode Specific Controls */}
-            {tradingMode === 'forex' && (
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-slate-300 text-sm mb-2">Leverage</label>
-                  <select 
-                    value={leverage}
-                    onChange={(e) => setLeverage(Number(e.target.value))}
-                    className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
-                  >
-                    <option value={1}>1:1</option>
-                    <option value={10}>1:10</option>
-                    <option value={50}>1:50</option>
-                    <option value={100}>1:100</option>
-                    <option value={500}>1:500</option>
-                  </select>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-slate-300 text-sm mb-2">Stop Loss</label>
-                    <input
-                      type="number"
-                      value={stopLoss}
-                      onChange={(e) => setStopLoss(e.target.value)}
-                      className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
-                      placeholder="0.00000"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-300 text-sm mb-2">Take Profit</label>
-                    <input
-                      type="number"
-                      value={takeProfit}
-                      onChange={(e) => setTakeProfit(e.target.value)}
-                      className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
-                      placeholder="0.00000"
-                    />
-                  </div>
-                </div>
+          </div>
+
+          {/* Order Entry */}
+          <div className="p-4 border-b border-slate-800">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">Quick Trade</h3>
+              <div className="flex space-x-1">
+                <button className="px-2 py-1 text-xs bg-blue-600 rounded">Market</button>
+                <button className="px-2 py-1 text-xs bg-slate-700 rounded">Limit</button>
+                <button className="px-2 py-1 text-xs bg-slate-700 rounded">Stop</button>
               </div>
-            )}
-            
-            <div>
-              <label className="block text-slate-300 text-sm mb-2">Investment Amount</label>
-              <div className="relative">
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Volume</label>
                 <input
                   type="number"
                   value={selectedAmount}
                   onChange={(e) => setSelectedAmount(Number(e.target.value))}
-                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white text-center font-mono text-lg pr-12"
-                  min="1"
-                  max={user.balance}
+                  className="w-full p-2 bg-slate-800 border border-slate-700 rounded text-sm"
+                  step="0.01"
                 />
-                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400">USD</span>
               </div>
-              <div className="grid grid-cols-3 gap-2 mt-3">
-                {[10, 25, 50, 100, 250, 500].map(amount => (
+
+              <div className="grid grid-cols-3 gap-2">
+                {[10, 25, 50].map(amount => (
                   <button
                     key={amount}
                     onClick={() => setSelectedAmount(amount)}
-                    disabled={user.balance < amount}
-                    className={`p-2 text-sm rounded font-medium transition-all duration-200 ${
-                      selectedAmount === amount 
-                        ? 'bg-blue-600 text-white transform scale-105' 
-                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                    } disabled:opacity-50`}
+                    className="p-1 text-xs bg-slate-800 hover:bg-slate-700 rounded"
                   >
                     ${amount}
                   </button>
                 ))}
               </div>
-            </div>
 
-            {tradingMode === 'binary' && (
-              <div>
-                <label className="block text-slate-300 text-sm mb-2">Expiry Time</label>
-                <div className="grid grid-cols-5 gap-1">
-                  {[
-                    { value: 60, label: '1m' },
-                    { value: 300, label: '5m' },
-                    { value: 900, label: '15m' },
-                    { value: 1800, label: '30m' },
-                    { value: 3600, label: '1h' }
-                  ].map(interval => (
-                    <button
-                      key={interval.value}
-                      onClick={() => setSelectedTime(interval.value)}
-                      className={`p-2 text-sm rounded font-medium transition-all duration-200 ${
-                        selectedTime === interval.value
-                          ? 'bg-blue-600 text-white transform scale-105'
-                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                      }`}
-                    >
-                      {interval.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Market Sentiment Indicator */}
-            <div className="bg-slate-700 rounded-lg p-3">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-slate-300 text-sm">Market Sentiment</span>
-                <span className="text-emerald-400 text-sm font-bold">68% Bullish</span>
-              </div>
-              <div className="w-full bg-slate-600 rounded-full h-2">
-                <div className="bg-gradient-to-r from-rose-500 to-emerald-500 h-2 rounded-full" style={{width: '68%'}}></div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => placeTrade('PUT')}
+                  className="bg-red-600 hover:bg-red-700 text-white p-3 rounded font-semibold transition-colors"
+                >
+                  SELL
+                  <div className="text-xs opacity-75">
+                    {formatPrice(selectedAsset, (marketData[selectedAsset]?.price || 0) - 0.0001)}
+                  </div>
+                </button>
+                <button
+                  onClick={() => placeTrade('CALL')}
+                  className="bg-green-600 hover:bg-green-700 text-white p-3 rounded font-semibold transition-colors"
+                >
+                  BUY
+                  <div className="text-xs opacity-75">
+                    {formatPrice(selectedAsset, (marketData[selectedAsset]?.price || 0) + 0.0001)}
+                  </div>
+                </button>
               </div>
             </div>
+          </div>
 
-            {/* Current Price Display */}
-            <div className="bg-slate-700 rounded-lg p-4 text-center">
-              <div className="text-xs text-slate-400 uppercase tracking-wide mb-1">Current Price</div>
-              <div className="text-2xl font-mono font-bold text-blue-400 animate-pulse">
-                {formatPrice(selectedAsset, marketData[selectedAsset]?.price)}
-              </div>
-              <div className="text-xs text-slate-400 mt-1">
-                Spread: 0.1 pips | Swap: -0.5
-              </div>
-            </div>
-
-            {/* Trading Buttons */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => placeTrade('PUT')}
-                disabled={user.balance < selectedAmount}
-                className="bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white p-4 rounded-lg font-medium transition-all duration-200 transform hover:scale-105 disabled:opacity-50 flex flex-col items-center space-y-2 relative overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 translate-x-full group-hover:translate-x-0 transition-transform duration-1000"></div>
-                <TrendingDown className="w-6 h-6" />
-                <span className="text-lg font-bold">SELL</span>
-                <span className="text-xs opacity-75">Lower</span>
-              </button>
-              
-              <button
-                onClick={() => placeTrade('CALL')}
-                disabled={user.balance < selectedAmount}
-                className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white p-4 rounded-lg font-medium transition-all duration-200 transform hover:scale-105 disabled:opacity-50 flex flex-col items-center space-y-2 relative overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 translate-x-full group-hover:translate-x-0 transition-transform duration-1000"></div>
-                <TrendingUp className="w-6 h-6" />
-                <span className="text-lg font-bold">BUY</span>
-                <span className="text-xs opacity-75">Higher</span>
-              </button>
-            </div>
-
-            {/* Trade Summary */}
-            <div className="bg-slate-700 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Potential Payout:</span>
-                <span className="text-emerald-400 font-semibold">
-                  {tradingMode === 'binary' ? '85%' : `1:${leverage}`}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Potential Profit:</span>
-                <span className="text-emerald-400 font-semibold">
-                  +${tradingMode === 'binary' ? (selectedAmount * 0.85).toFixed(2) : (selectedAmount * leverage * 0.1).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Risk Amount:</span>
-                <span className="text-rose-400 font-semibold">-${selectedAmount.toFixed(2)}</span>
-              </div>
-              {tradingMode === 'forex' && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Margin Required:</span>
-                  <span className="text-blue-400 font-semibold">${(selectedAmount / leverage).toFixed(2)}</span>
+          {/* Positions */}
+          <div className="flex-1 p-4">
+            <h3 className="text-sm font-semibold mb-3">Open Positions</h3>
+            <div className="space-y-2">
+              {activeTrades.length > 0 ? (
+                activeTrades.map(trade => (
+                  <div key={trade.id} className="bg-slate-800 rounded p-3 text-xs">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-medium">{trade.asset}</span>
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        trade.direction === 'CALL' ? 'bg-green-600' : 'bg-red-600'
+                      }`}>
+                        {trade.direction}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-slate-400">
+                      <div>
+                        <div>Volume</div>
+                        <div className="text-white">{trade.amount}</div>
+                      </div>
+                      <div>
+                        <div>Entry</div>
+                        <div className="text-white">{formatPrice(trade.asset, trade.entryPrice)}</div>
+                      </div>
+                      <div>
+                        <div>P&L</div>
+                        <div className="text-green-400">+$12.50</div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center text-slate-400 py-8 text-sm">
+                  No open positions
                 </div>
               )}
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Economic Calendar & News */}
-          <div className="border-t border-slate-700 p-4 max-h-96 overflow-y-auto">
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold mb-3 flex items-center">
-                  <BarChart3 className="w-5 h-5 mr-2 text-blue-400" />
-                  Economic Calendar
-                </h3>
-                <div className="space-y-2">
-                  {[
-                    { time: '14:30', event: 'USD Non-Farm Payrolls', impact: 'high' },
-                    { time: '16:00', event: 'EUR ECB Rate Decision', impact: 'medium' },
-                    { time: '18:00', event: 'GBP BOE Minutes', impact: 'low' }
-                  ].map((event, i) => (
-                    <div key={i} className="bg-slate-700 rounded p-3 hover:bg-slate-600 transition-all cursor-pointer">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="text-sm font-medium">{event.event}</div>
-                          <div className="text-xs text-slate-400">{event.time} GMT</div>
-                        </div>
-                        <div className={`w-3 h-3 rounded-full ${
-                          event.impact === 'high' ? 'bg-rose-500' :
-                          event.impact === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
-                        }`}></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Bottom Status Bar */}
+      <div className="bg-slate-900 border-t border-slate-800 px-4 py-2 flex items-center justify-between text-xs">
+        <div className="flex items-center space-x-4">
+          <span className="text-slate-400">Connected to server</span>
+          <span className="text-slate-400">Ping: 12ms</span>
+          <span className="text-slate-400">Data feed: Real-time</span>
+        </div>
+        <div className="flex items-center space-x-4">
+          <span className="text-slate-400">Server time: {new Date().toLocaleTimeString()}</span>
+          <span className="text-slate-400">Build: v4.2.1</span>
         </div>
       </div>
     </div>
@@ -682,7 +689,7 @@ const TradingDashboard = () => {
 };
 
 // Main Landing Page Component
-const ExpertOptionLandingPage = ({ onStartTrading }) => {
+const ExpertOptionLandingPage = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [showTradingDashboard, setShowTradingDashboard] = useState(false);
@@ -888,17 +895,7 @@ const ExpertOptionLandingPage = ({ onStartTrading }) => {
 
   if (showTradingDashboard) {
     return (
-      <div>
-        <div className="absolute top-4 left-4 z-50">
-          <button
-            onClick={handleBackToLanding}
-            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded font-medium transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25"
-          >
-            ← Back to Landing
-          </button>
-        </div>
-        <TradingDashboard />
-      </div>
+      <TradingDashboard handleBackToLanding={handleBackToLanding} />
     );
   }
 
