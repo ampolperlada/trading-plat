@@ -1,5 +1,7 @@
-// frontend/src/pages/trading.js - Real Expert Option Interface
+'use client';
+
 import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import { useTrading } from '../contexts/TradingContext';
@@ -22,7 +24,8 @@ import {
   FaGift
 } from 'react-icons/fa';
 
-export default function ExpertOptionTradingInterface() {
+function TradingContent() {
+  const [isClient, setIsClient] = useState(false);
   const { user, logout } = useAuth();
   const { isConnected, prices, subscribeToAssets } = useWebSocket();
   const { 
@@ -44,6 +47,11 @@ export default function ExpertOptionTradingInterface() {
   const [priceHistory, setPriceHistory] = useState([]);
   const [isTrading, setIsTrading] = useState(false);
   const chartRef = useRef(null);
+
+  // Set client-side flag
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -242,6 +250,10 @@ export default function ExpertOptionTradingInterface() {
       setIsTrading(false);
     }
   };
+
+  if (!isClient) {
+    return <div>Loading...</div>;
+  }
 
   if (!user) return null;
 
@@ -553,3 +565,7 @@ export default function ExpertOptionTradingInterface() {
     </div>
   );
 }
+
+export default dynamic(() => Promise.resolve(TradingContent), {
+  ssr: false
+});
