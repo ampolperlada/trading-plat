@@ -1,6 +1,7 @@
 // services/AuthService.js
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { query } = require('../config/database'); // Import the query helper
+const bcrypt = require('bcryptjs'); // Import bcrypt for password comparison
 
 class AuthService {
   constructor(redisService) {
@@ -29,7 +30,7 @@ class AuthService {
     try {
       const decoded = await this.verifyToken(token);
       
-      // Check Redis cache
+      // Check Redis cache (if available)
       let user = null;
       if (this.redis) {
         const cached = await this.redis.get(`session:${decoded.userId}`);
@@ -37,14 +38,24 @@ class AuthService {
       }
       
       if (!user) {
-        user = await User.findById(decoded.userId).select('-password');
-        if (user && this.redis) {
-          await this.redis.set(`session:${decoded.userId}`, user.toObject(), 3600);
+        // Fetch user from MySQL using the query helper
+        const users = await query('SELECT id, email, first_name, last_name, balance, is_verified, account_type, total_profit, total_trades, win_rate, created_at, last_login FROM users WHERE id = ?', [decoded.userId]);
+        
+        if (users.length === 0) {
+          throw new Error('User not found');
+        }
+        
+        user = users[0];
+        
+        // Cache the user in Redis (if available)
+        if (this.redis && user) {
+          await this.redis.set(`session:${decoded.userId}`, user, 3600); // Cache for 1 hour
         }
       }
       
       return user;
     } catch (error) {
+      console.error('AuthService getUserFromToken error:', error.message);
       throw new Error('Invalid or expired token');
     }
   }

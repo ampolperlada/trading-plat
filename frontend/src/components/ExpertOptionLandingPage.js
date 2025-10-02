@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import io from 'socket.io-client';
 import { 
   Menu, 
   X, 
@@ -14,13 +15,68 @@ import {
   Users,
   DollarSign,
   CreditCard,
-  CheckCircle
+  CheckCircle,
+  Activity,
+  BarChart3
 } from 'lucide-react';
 import apiService from '../services/api';
-import UserProfile from '../components/UserProfile';
+
+// Custom styles for animations
+const floatingAnimation = `
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(0px) rotate(3deg); }
+  50% { transform: translateY(-10px) rotate(3deg); }
+}
+.animate-bounce-slow {
+  animation: bounce-slow 3s ease-in-out infinite;
+}
+`;
+
+const additionalStyles = `
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+.gradient-text {
+  background: linear-gradient(45deg, #3b82f6, #06b6d4, #8b5cf6);
+  background-size: 300% 300%;
+  animation: gradient-shift 3s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+`;
+
+const animations = `
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes bounce-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.animate-fadeIn { animation: fadeIn 0.6s ease-out forwards; }
+.animate-slideIn { animation: slideIn 0.5s ease-out forwards; }
+.animate-bounce-subtle { animation: bounce-subtle 2s ease-in-out infinite; }
+`;
 
 // Trading Dashboard Component
-const TradingDashboard = () => {
+const TradingDashboard = ({ handleBackToLanding }) => {
   const [selectedAsset, setSelectedAsset] = useState('EUR/USD');
   const [selectedAmount, setSelectedAmount] = useState(10);
   const [selectedTime, setSelectedTime] = useState(60);
@@ -32,8 +88,22 @@ const TradingDashboard = () => {
   const [activeTrades, setActiveTrades] = useState([]);
   const [marketData, setMarketData] = useState({});
   const [isConnected, setIsConnected] = useState(true);
+  const [socket, setSocket] = useState(null);
+  const [tradeHistory, setTradeHistory] = useState([]);
+  const [chartData, setChartData] = useState([]);
+  const [orderBook, setOrderBook] = useState({ bids: [], asks: [] });
+  const [tradingMode, setTradingMode] = useState('binary'); // binary, forex, crypto
+  const [leverage, setLeverage] = useState(1);
+  const [stopLoss, setStopLoss] = useState('');
+  const [takeProfit, setTakeProfit] = useState('');
+  const [marketNews, setMarketNews] = useState([]);
+  const [chartPoints, setChartPoints] = useState([]);
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [showUserProfile, setShowUserProfile] = useState(false);
 
-  // Mock market data
   const assets = {
     'EUR/USD': { name: 'Euro / US Dollar', price: 1.08945, change: 0.12, category: 'forex', icon: '💱' },
     'GBP/USD': { name: 'British Pound / US Dollar', price: 1.24567, change: -0.08, category: 'forex', icon: '💱' },
@@ -51,78 +121,99 @@ const TradingDashboard = () => {
     { id: 'stocks', name: 'Stocks', icon: '📈' }
   ];
 
-  // Initialize and update market data with real CoinGecko data
   useEffect(() => {
-    const fetchRealMarketData = async () => {
-      try {
-        const response = await fetch('http://localhost:5001/api/market-data');
-        const data = await response.json();
+const newSocket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+
+    newSocket.on('connect', () => {
+      console.log('Connected to WebSocket server');
+      setIsConnected(true);
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('Disconnected from WebSocket server');
+      setIsConnected(false);
+    });
+
+    // Listen for real price updates from CoinGecko service
+    newSocket.on('price_update', (priceUpdates) => {
+      console.log('Received price updates:', priceUpdates);
+      
+      setMarketData(prevData => {
+        const updatedData = { ...prevData };
         
-        setMarketData(prevData => {
-          const newData = {};
-          
-          // Update crypto assets with real CoinGecko data
-          Object.entries(data).forEach(([symbol, priceData]) => {
-            if (assets[symbol]) {
-              newData[symbol] = {
-                ...assets[symbol],
-                price: priceData.price,
-                change: priceData.change,
-                timestamp: priceData.timestamp
-              };
-            }
-          });
-          
-          // Keep forex and stocks with simulated data for now
-          Object.entries(assets).forEach(([symbol, asset]) => {
-            if (!newData[symbol] && asset.category !== 'crypto') {
-              const prevPrice = prevData[symbol]?.price || asset.price;
-              const variation = (Math.random() - 0.5) * 0.001;
-              const newPrice = prevPrice * (1 + variation);
-              const changePercent = ((newPrice - asset.price) / asset.price) * 100;
-              
-              newData[symbol] = {
-                ...asset,
-                price: Math.max(0.0001, newPrice),
-                change: changePercent,
-                timestamp: Date.now()
-              };
-            }
-          });
-          
-          return newData;
-        });
-        
-        setIsConnected(true);
-      } catch (error) {
-        console.error('Failed to fetch market data:', error);
-        setIsConnected(false);
-        
-        // Fallback to simulated data if API fails
-        setMarketData(prevData => {
-          const newData = {};
-          Object.entries(assets).forEach(([symbol, asset]) => {
-            const prevPrice = prevData[symbol]?.price || asset.price;
-            const variation = (Math.random() - 0.5) * 0.001;
-            const newPrice = prevPrice * (1 + variation);
-            const changePercent = ((newPrice - asset.price) / asset.price) * 100;
-            
-            newData[symbol] = {
-              ...asset,
-              price: Math.max(0.0001, newPrice),
-              change: changePercent,
-              timestamp: Date.now()
+        priceUpdates.forEach(update => {
+          if (assets[update.symbol]) {
+            updatedData[update.symbol] = {
+              ...assets[update.symbol],
+              price: update.price,
+              change: update.changePercent,
+              timestamp: update.timestamp
             };
-          });
-          return newData;
+          }
         });
+        
+        return updatedData;
+      });
+    });
+
+    newSocket.on('trade_result', (closedTradeData) => {
+      console.log("Received trade result:", closedTradeData);
+      setActiveTrades(prev => prev.filter(t => t.id !== closedTradeData._id));
+      if (closedTradeData.result === 'win') {
+        setUser(prev => ({ ...prev, balance: prev.balance + closedTradeData.profit }));
+      }
+      setTradeHistory(prev => [closedTradeData, ...prev]);
+    });
+
+    setSocket(newSocket);
+    return () => {
+      console.log("Cleaning up WebSocket connection...");
+      newSocket.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/trades/history', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        const historyData = await response.json();
+        if (response.ok) {
+          setTradeHistory(historyData);
+        } else {
+          console.error("Failed to fetch history:", historyData.error);
+        }
+      } catch (err) {
+        console.error("Error fetching trade history:", err);
       }
     };
 
-    fetchRealMarketData();
-    const interval = setInterval(fetchRealMarketData, 30000); // Every 30 seconds
-    return () => clearInterval(interval);
+    if (localStorage.getItem('token')) {
+      fetchHistory();
+    }
   }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentPrice = marketData[selectedAsset]?.price || assets[selectedAsset]?.price || 1.08945;
+      const newPoint = {
+        time: Date.now(),
+        price: currentPrice + (Math.random() - 0.5) * 0.001, // Small random variation
+        volume: Math.random() * 1000
+      };
+      
+      setChartPoints(prev => {
+        const updated = [...prev, newPoint];
+        return updated.slice(-50); // Keep last 50 points
+      });
+    }, 2000); // Update every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [selectedAsset, marketData]);
 
   const formatPrice = (symbol, price) => {
     if (!price) return '0.00000';
@@ -133,130 +224,362 @@ const TradingDashboard = () => {
 
   const placeTrade = async (direction) => {
     const currentPrice = marketData[selectedAsset]?.price;
-    if (!currentPrice || user.balance < selectedAmount) return;
+    if (!currentPrice || user.balance < selectedAmount || !socket) return;
 
-    const trade = {
-      id: Date.now().toString(),
-      asset: selectedAsset,
-      direction,
-      amount: selectedAmount,
-      entryPrice: currentPrice,
-      timestamp: Date.now(),
-      expiryTime: Date.now() + (selectedTime * 1000),
-      status: 'active'
-    };
+    try {
+      const response = await fetch('http://localhost:5000/api/trades/place', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          asset: selectedAsset,
+          direction: direction,
+          amount: selectedAmount,
+          expiryTimeSeconds: selectedTime,
+          leverage: tradingMode === 'forex' ? leverage : undefined,
+          stopLoss: tradingMode === 'forex' ? stopLoss : undefined,
+          takeProfit: tradingMode === 'forex' ? takeProfit : undefined
+        })
+      });
 
-    setActiveTrades(prev => [...prev, trade]);
-    setUser(prev => ({ ...prev, balance: prev.balance - selectedAmount }));
-
-    // Simulate trade result
-    setTimeout(() => {
-      const finalPrice = marketData[selectedAsset]?.price;
-      if (!finalPrice) return;
-
-      const priceChange = finalPrice - trade.entryPrice;
-      const isWin = (direction === 'CALL' && priceChange > 0) || (direction === 'PUT' && priceChange < 0);
-      const payout = isWin ? selectedAmount * 1.8 : 0;
-
-      if (isWin) {
-        setUser(prev => ({ ...prev, balance: prev.balance + payout }));
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to place trade');
       }
 
-      setActiveTrades(prev => prev.filter(t => t.id !== trade.id));
-    }, selectedTime * 1000);
+      console.log("Trade placed successfully:", data.trade);
+      
+      const newTrade = {
+        id: data.trade._id,
+        asset: data.trade.asset,
+        direction: data.trade.direction,
+        amount: data.trade.amount,
+        entryPrice: data.trade.entryPrice,
+        timestamp: new Date(data.trade.createdAt).getTime(),
+        expiryTime: new Date(data.trade.expiryTime).getTime(),
+        status: 'active',
+        leverage: data.trade.leverage,
+        stopLoss: data.trade.stopLoss,
+        takeProfit: data.trade.takeProfit
+      };
+      setActiveTrades(prev => [...prev, newTrade]);
+      setUser(prev => ({ ...prev, balance: prev.balance - selectedAmount }));
+    } catch (error) {
+      console.error("Error placing trade:", error);
+      alert(`Failed to place trade: ${error.message}`);
+    }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-900 text-white">
-      {/* Trading Dashboard Header */}
-      <header className="bg-slate-800 border-b border-slate-700 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <img src="/expertoption-logo.png" alt="ExpertOption" className="w-8 h-8" />
-              <span className="text-xl font-bold text-white">ExpertOption</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              {isConnected ? (
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              ) : (
-                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-              )}
-              <span className={`text-sm ${isConnected ? 'text-green-500' : 'text-red-500'}`}>
-                {isConnected ? 'Live' : 'Offline'}
-              </span>
-            </div>
+  const DepositModal = () => (
+    showDepositModal && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4 border border-slate-700">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold">Deposit Funds</h2>
+            <button
+              onClick={() => setShowDepositModal(false)}
+              className="text-slate-400 hover:text-white"
+            >
+              ×
+            </button>
           </div>
 
-          <div className="flex items-center space-x-6">
-            <div className="bg-slate-700 rounded-lg px-4 py-2">
-              <div className="text-center">
-                <div className="text-gray-400 text-xs">Balance</div>
-                <div className="text-green-500 font-bold text-lg">
-                  ${user.balance.toFixed(2)}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-slate-300 mb-2">Amount (USD)</label>
+              <input
+                type="number"
+                value={depositAmount}
+                onChange={(e) => setDepositAmount(e.target.value)}
+                className="w-full p-3 bg-slate-700 border border-slate-600 rounded text-white"
+                placeholder="Enter amount"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm text-slate-300 mb-2">Payment Method</label>
+              <select className="w-full p-3 bg-slate-700 border border-slate-600 rounded text-white">
+                <option>Credit Card</option>
+                <option>Bank Transfer</option>
+                <option>PayPal</option>
+                <option>Cryptocurrency</option>
+              </select>
+            </div>
+
+            <div className="bg-blue-900/20 border border-blue-500/30 rounded p-3">
+              <p className="text-blue-300 text-sm">
+                Demo Mode: This will simulate a deposit for testing purposes.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                if (depositAmount) {
+                  setUser(prev => ({...prev, balance: prev.balance + Number(depositAmount)}));
+                  setDepositAmount('');
+                  setShowDepositModal(false);
+                }
+              }}
+              className="w-full bg-green-600 hover:bg-green-700 text-white p-3 rounded font-medium"
+            >
+              Simulate Deposit
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const WithdrawModal = () => (
+    showWithdrawModal && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4 border border-slate-700">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold">Withdraw Funds</h2>
+            <button
+              onClick={() => setShowWithdrawModal(false)}
+              className="text-slate-400 hover:text-white"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-slate-300 mb-2">Amount (USD)</label>
+              <input
+                type="number"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+                className="w-full p-3 bg-slate-700 border border-slate-600 rounded text-white"
+                placeholder="Enter amount"
+                max={user.balance}
+              />
+              <div className="text-xs text-slate-400 mt-1">
+                Available: ${user.balance.toFixed(2)}
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-sm text-slate-300 mb-2">Withdrawal Method</label>
+              <select className="w-full p-3 bg-slate-700 border border-slate-600 rounded text-white">
+                <option>Bank Account</option>
+                <option>Credit Card</option>
+                <option>PayPal</option>
+                <option>Cryptocurrency</option>
+              </select>
+            </div>
+
+            <div className="bg-yellow-900/20 border border-yellow-500/30 rounded p-3">
+              <p className="text-yellow-300 text-sm">
+                Demo Mode: This will simulate a withdrawal for testing purposes.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                if (withdrawAmount && Number(withdrawAmount) <= user.balance) {
+                  setUser(prev => ({...prev, balance: prev.balance - Number(withdrawAmount)}));
+                  setWithdrawAmount('');
+                  setShowWithdrawModal(false);
+                }
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded font-medium"
+            >
+              Simulate Withdrawal
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const UserProfileModal = () => (
+    showUserProfile && (
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md mx-4 border border-slate-700">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold">Profile</h2>
+            <button
+              onClick={() => setShowUserProfile(false)}
+              className="text-slate-400 hover:text-white text-2xl"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            {/* Profile Picture */}
+            <div className="flex flex-col items-center">
+              <div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center mb-3">
+                <span className="text-white text-3xl font-bold">{user.name.charAt(0)}</span>
+              </div>
+              <h3 className="text-xl font-semibold">{user.name}</h3>
+              <span className="text-sm bg-orange-500 px-3 py-1 rounded mt-2">DEMO</span>
+            </div>
+
+            {/* Account Info */}
+            <div className="space-y-3">
+              <div className="bg-slate-700 rounded-lg p-4">
+                <div className="text-slate-400 text-sm">Profile ID</div>
+                <div className="text-white font-mono">547-785-194</div>
+              </div>
+
+              <div className="bg-slate-700 rounded-lg p-4">
+                <div className="text-slate-400 text-sm">Email</div>
+                <div className="text-white">{user.email}</div>
+              </div>
+
+              <div className="bg-slate-700 rounded-lg p-4">
+                <div className="text-slate-400 text-sm">Account Balance</div>
+                <div className="text-green-400 text-2xl font-bold">${user.balance.toFixed(2)}</div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-700 rounded-lg p-3">
+                  <div className="text-slate-400 text-xs">Total Trades</div>
+                  <div className="text-white text-lg font-bold">{activeTrades.length + tradeHistory.length}</div>
+                </div>
+                <div className="bg-slate-700 rounded-lg p-3">
+                  <div className="text-slate-400 text-xs">Win Rate</div>
+                  <div className="text-green-400 text-lg font-bold">67%</div>
                 </div>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm">{user.name.charAt(0)}</span>
-              </div>
-              <span className="text-white">{user.name}</span>
+
+            {/* Action Buttons */}
+            <div className="space-y-2">
+              <button className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg font-medium transition-colors">
+                Edit Profile
+              </button>
+              <button 
+                onClick={handleBackToLanding}
+                className="w-full bg-slate-700 hover:bg-slate-600 text-white p-3 rounded-lg font-medium transition-colors"
+              >
+                Back to Landing
+              </button>
             </div>
           </div>
         </div>
+      </div>
+    )
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+      {/* Professional Trading Header */}
+      <header className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center space-x-6">
+          {/* Back Button */}
+          <button
+            onClick={handleBackToLanding}
+            className="flex items-center space-x-2 px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-sm transition-colors"
+          >
+            <span>←</span>
+            <span>Back</span>
+          </button>
+          
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
+              <span className="text-white text-xs font-bold">EO</span>
+            </div>
+            <span className="text-lg font-semibold">ExpertOption Pro</span>
+            <div className="flex items-center space-x-2 ml-4">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-green-400 text-xs font-medium">LIVE</span>
+            </div>
+          </div>
+          
+          {/* Quick Actions */}
+          <div className="flex items-center space-x-2">
+            <button className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs">Watchlist</button>
+            <button className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs">News</button>
+            <button className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs">Analysis</button>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-4">
+          <div className="text-right">
+            <div className="text-xs text-slate-400">Account Balance</div>
+            <div className="text-lg font-bold text-green-400">${user.balance.toFixed(2)}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-slate-400">P&L Today</div>
+            <div className="text-lg font-bold text-green-400">+$127.50</div>
+          </div>
+          
+          {/* User Profile Button */}
+          <button
+            onClick={() => setShowUserProfile(true)}
+            className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded transition-colors"
+          >
+            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+              <span className="text-white text-xs font-bold">{user.name.charAt(0)}</span>
+            </div>
+            <div className="text-left">
+              <div className="text-sm font-medium">{user.name}</div>
+              <div className="text-xs text-slate-400">View Profile</div>
+            </div>
+          </button>
+        </div>
       </header>
 
-      <div className="flex h-[calc(100vh-73px)]">
-        {/* Left Panel - Assets */}
-        <div className="w-80 bg-slate-800 border-r border-slate-700 flex flex-col">
-          <div className="p-4 border-b border-slate-700">
-            <div className="grid grid-cols-4 gap-1">
+      {/* Main Trading Interface */}
+      <div className="flex-1 flex">
+        {/* Left Sidebar - Market Watch */}
+        <div className="w-72 bg-slate-900 border-r border-slate-800 flex flex-col">
+          <div className="p-3 border-b border-slate-800">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Market Watch</h3>
+              <button className="text-xs text-blue-400 hover:text-blue-300">+ Add Symbol</button>
+            </div>
+            <div className="flex space-x-1">
               {categories.map(category => (
                 <button
                   key={category.id}
-                  className="p-2 rounded text-xs transition-colors bg-slate-700 text-gray-300 hover:bg-slate-600"
+                  className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded"
                 >
-                  <div className="text-center">
-                    <div className="text-sm mb-1">{category.icon}</div>
-                    <div>{category.name}</div>
-                  </div>
+                  {category.name}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            <div className="grid grid-cols-4 gap-1 p-2 text-xs text-slate-400 font-medium border-b border-slate-800">
+              <span>Symbol</span>
+              <span>Bid</span>
+              <span>Ask</span>
+              <span>Change</span>
+            </div>
+            
             {Object.entries(assets).map(([symbol, asset]) => {
               const data = marketData[symbol] || asset;
               const isSelected = selectedAsset === symbol;
+              const bid = data.price - 0.0001;
+              const ask = data.price + 0.0001;
               
               return (
                 <button
                   key={symbol}
                   onClick={() => setSelectedAsset(symbol)}
-                  className={`w-full p-4 text-left hover:bg-slate-700 transition-colors border-l-4 ${
-                    isSelected ? 'bg-slate-700 border-blue-500' : 'border-transparent'
+                  className={`w-full grid grid-cols-4 gap-1 p-2 text-xs hover:bg-slate-800 transition-colors ${
+                    isSelected ? 'bg-slate-800 border-l-2 border-blue-500' : ''
                   }`}
                 >
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center space-x-3">
-                      <span className="text-lg">{asset.icon}</span>
-                      <div>
-                        <div className="font-bold text-sm">{symbol}</div>
-                        <div className="text-xs text-gray-400">{asset.name}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-mono text-sm font-semibold">
-                        {formatPrice(symbol, data.price)}
-                      </div>
-                      <div className={`text-xs font-bold ${
-                        data.change >= 0 ? 'text-green-400' : 'text-red-400'
-                      }`}>
-                        {data.change >= 0 ? '+' : ''}{data.change.toFixed(2)}%
-                      </div>
-                    </div>
+                  <div className="text-left">
+                    <div className="font-medium">{symbol}</div>
+                  </div>
+                  <div className="font-mono text-slate-300">
+                    {formatPrice(symbol, bid)}
+                  </div>
+                  <div className="font-mono text-slate-300">
+                    {formatPrice(symbol, ask)}
+                  </div>
+                  <div className={`font-bold ${data.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {data.change >= 0 ? '+' : ''}{data.change.toFixed(2)}%
                   </div>
                 </button>
               );
@@ -264,195 +587,524 @@ const TradingDashboard = () => {
           </div>
         </div>
 
-        {/* Center Panel - Chart */}
+        {/* Center - Chart and Order Entry */}
         <div className="flex-1 flex flex-col">
-          <div className="bg-slate-800 px-6 py-4 border-b border-slate-700">
+          {/* Symbol Header */}
+          <div className="bg-slate-900 p-4 border-b border-slate-800">
             <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-white">{selectedAsset}</h2>
-                <p className="text-gray-400">{assets[selectedAsset]?.name}</p>
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-mono font-bold text-white">
+              <div className="flex items-center space-x-4">
+                <h2 className="text-xl font-bold">{selectedAsset}</h2>
+                <div className="text-2xl font-mono font-bold">
                   {formatPrice(selectedAsset, marketData[selectedAsset]?.price)}
                 </div>
-                <div className={`text-lg font-semibold ${
+                <div className={`flex items-center space-x-1 ${
                   (marketData[selectedAsset]?.change || 0) >= 0 ? 'text-green-400' : 'text-red-400'
                 }`}>
-                  {(marketData[selectedAsset]?.change || 0) >= 0 ? '+' : ''}
-                  {(marketData[selectedAsset]?.change || 0).toFixed(2)}%
+                  {(marketData[selectedAsset]?.change || 0) >= 0 ? '▲' : '▼'}
+                  <span className="font-semibold">
+                    {Math.abs(marketData[selectedAsset]?.change || 0).toFixed(2)}%
+                  </span>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-slate-400">Spread:</span>
+                <span className="text-xs font-mono">0.2</span>
+                <span className="text-xs text-slate-400">Swap:</span>
+                <span className="text-xs font-mono text-red-400">-1.5</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Chart Area - Expanded */}
+          <div className="flex-1 p-4">
+            <div className="h-full bg-slate-900 rounded-lg border border-slate-800 flex flex-col">
+              <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <h3 className="font-semibold">Price Chart</h3>
+                  <div className="flex space-x-1">
+                    {['1M', '5M', '15M', '1H', '4H', '1D'].map(timeframe => (
+                      <button key={timeframe} className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded">
+                        {timeframe}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded">Indicators</button>
+                  <button className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded">Drawing Tools</button>
+                </div>
+              </div>
+              
+              {/* Expanded Chart Container */}
+              <div className="flex-1 p-4 min-h-0">
+                <div className="w-full h-full bg-slate-950 rounded relative overflow-hidden">
+                  <svg className="w-full h-full" viewBox="0 0 1000 500">
+                    {/* Enhanced Grid */}
+                    <defs>
+                      <pattern id="grid" width="50" height="25" patternUnits="userSpaceOnUse">
+                        <path d="M 50 0 L 0 0 0 25" fill="none" stroke="#374151" strokeWidth="0.5" opacity="0.2"/>
+                      </pattern>
+                      <linearGradient id="priceGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.4"/>
+                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0"/>
+                      </linearGradient>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#grid)" />
+                    
+                    {/* Main price line with more data points */}
+                    <path
+                      d="M 50 250 L 80 240 L 110 245 L 140 235 L 170 230 L 200 225 L 230 235 L 260 240 L 290 238 L 320 242 L 350 245 L 380 248 L 410 252 L 440 250 L 470 255 L 500 253 L 530 258 L 560 260 L 590 255 L 620 250 L 650 248 L 680 252 L 710 255 L 740 258 L 770 260 L 800 262 L 830 265 L 860 268 L 890 270 L 920 272 L 950 275"
+                      stroke="#3b82f6"
+                      strokeWidth="2"
+                      fill="none"
+                      className="animate-pulse"
+                    />
+                    
+                    {/* Area fill */}
+                    <path
+                      d="M 50 250 L 80 240 L 110 245 L 140 235 L 170 230 L 200 225 L 230 235 L 260 240 L 290 238 L 320 242 L 350 245 L 380 248 L 410 252 L 440 250 L 470 255 L 500 253 L 530 258 L 560 260 L 590 255 L 620 250 L 650 248 L 680 252 L 710 255 L 740 258 L 770 260 L 800 262 L 830 265 L 860 268 L 890 270 L 920 272 L 950 275 L 950 500 L 50 500 Z"
+                      fill="url(#priceGradient)"
+                      opacity="0.3"
+                    />
+                    
+                    {/* Enhanced candlesticks */}
+                    {Array.from({length: 30}).map((_, i) => {
+                      const x = 50 + i * 30;
+                      const isGreen = Math.random() > 0.5;
+                      const height = Math.random() * 30 + 8;
+                      const y = 240 + (Math.random() - 0.5) * 60;
+                      
+                      return (
+                        <g key={i}>
+                          <line
+                            x1={x}
+                            y1={y - height/2 - 8}
+                            x2={x}
+                            y2={y + height/2 + 8}
+                            stroke={isGreen ? "#10b981" : "#ef4444"}
+                            strokeWidth="1"
+                          />
+                          <rect
+                            x={x - 4}
+                            y={isGreen ? y - height/2 : y}
+                            width="8"
+                            height={height}
+                            fill={isGreen ? "#10b981" : "#ef4444"}
+                          />
+                        </g>
+                      );
+                    })}
+                    
+                    {/* Price levels */}
+                    {[200, 225, 250, 275, 300].map((level, i) => (
+                      <g key={i}>
+                        <line
+                          x1="0"
+                          y1={level}
+                          x2="1000"
+                          y2={level}
+                          stroke="#374151"
+                          strokeWidth="0.5"
+                          strokeDasharray="2,2"
+                          opacity="0.5"
+                        />
+                        <text x="10" y={level - 5} fill="#64748b" fontSize="10" fontFamily="monospace">
+                          {(1.08900 + (250 - level) * 0.0001).toFixed(5)}
+                        </text>
+                      </g>
+                    ))}
+                    
+                    {/* Current price line */}
+                    <line
+                      x1="0"
+                      y1="250"
+                      x2="1000"
+                      y2="250"
+                      stroke="#10b981"
+                      strokeWidth="1"
+                      strokeDasharray="5,5"
+                      opacity="0.8"
+                    />
+                  </svg>
+                  
+                  {/* Enhanced OHLC data */}
+                  <div className="absolute top-4 left-4 bg-slate-800/90 rounded p-3 text-xs">
+                    <div className="grid grid-cols-4 gap-6">
+                      <div>
+                        <div className="text-slate-400">Open</div>
+                        <div className="text-white font-mono">1.08912</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400">High</div>
+                        <div className="text-green-400 font-mono">1.08967</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400">Low</div>
+                        <div className="text-red-400 font-mono">1.08901</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400">Close</div>
+                        <div className="text-white font-mono">{formatPrice(selectedAsset, marketData[selectedAsset]?.price)}</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Enhanced volume bars */}
+                  <div className="absolute bottom-4 left-4 right-4 h-20 flex items-end space-x-1">
+                    {Array.from({length: 80}).map((_, i) => (
+                      <div
+                        key={i}
+                        className="bg-blue-500/20 flex-1 transition-all duration-300 hover:bg-blue-500/40"
+                        style={{ height: `${Math.random() * 100}%` }}
+                      />
+                    ))}
+                  </div>
+                  
+                  {/* Trading signals overlay */}
+                  <div className="absolute top-4 right-4 bg-slate-800/90 rounded p-3 text-xs">
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span>BUY Signal - RSI Oversold</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                        <span>Support Level: 1.08900</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-          
-          <div className="flex-1 p-6">
-            <div className="h-full bg-slate-800 rounded-lg flex items-center justify-center">
-              <div className="text-center">
-                <TrendingUp className="w-16 h-16 text-blue-400 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-white mb-2">Live Chart</h3>
-                <p className="text-gray-400">Real-time price movements for {selectedAsset}</p>
+
+          {/* Technical Analysis Panel */}
+          <div className="mt-4 bg-slate-800 rounded-lg p-4">
+            <h4 className="text-sm font-semibold mb-3">Technical Indicators</h4>
+            <div className="grid grid-cols-3 gap-4 text-xs">
+              <div className="bg-slate-700 rounded p-3">
+                <div className="text-slate-400">RSI (14)</div>
+                <div className="text-yellow-400 font-bold">67.8</div>
+                <div className="text-xs text-slate-500">Neutral</div>
               </div>
+              <div className="bg-slate-700 rounded p-3">
+                <div className="text-slate-400">MACD</div>
+                <div className="text-green-400 font-bold">+0.0012</div>
+                <div className="text-xs text-slate-500">Bullish</div>
+              </div>
+              <div className="bg-slate-700 rounded p-3">
+                <div className="text-slate-400">MA (20)</div>
+                <div className="text-blue-400 font-bold">1.0889</div>
+                <div className="text-xs text-slate-500">Above</div>
+              </div>
+            </div>
+            
+            <div className="mt-3 flex space-x-2">
+              <button className="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs">Bollinger Bands</button>
+              <button className="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs">Fibonacci</button>
+              <button className="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs">Support/Resistance</button>
             </div>
           </div>
         </div>
 
-        {/* Right Panel - Trading */}
-        <div className="w-80 bg-slate-800 border-l border-slate-700 flex flex-col">
-          <div className="p-6 space-y-6">
-            <h2 className="text-xl font-bold text-white">Trade Options</h2>
+        {/* Right Panel - Trading Interface */}
+        <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col">
+          {/* Account Summary */}
+          <div className="p-4 border-b border-slate-800">
+            <h3 className="text-sm font-semibold mb-3">Account Summary</h3>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="bg-slate-800 rounded p-2">
+                <div className="text-slate-400">Balance</div>
+                <div className="font-bold text-green-400">${user.balance.toFixed(2)}</div>
+              </div>
+              <div className="bg-slate-800 rounded p-2">
+                <div className="text-slate-400">Equity</div>
+                <div className="font-bold">${user.balance.toFixed(2)}</div>
+              </div>
+              <div className="bg-slate-800 rounded p-2">
+                <div className="text-slate-400">Margin</div>
+                <div className="font-bold text-blue-400">${(user.balance * 0.1).toFixed(2)}</div>
+              </div>
+              <div className="bg-slate-800 rounded p-2">
+                <div className="text-slate-400">Free Margin</div>
+                <div className="font-bold text-green-400">${(user.balance * 0.9).toFixed(2)}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Account Actions */}
+          <div className="p-4 border-b border-slate-800">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">Account Actions</h3>
+              <span className="text-xs text-slate-400">Demo Mode</span>
+            </div>
             
-            <div>
-              <label className="block text-gray-300 text-sm font-medium mb-3">Investment Amount</label>
-              <input
-                type="number"
-                value={selectedAmount}
-                onChange={(e) => setSelectedAmount(Number(e.target.value))}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-blue-500 focus:outline-none text-center font-mono text-lg"
-                min="1"
-                max={user.balance}
-              />
-              <div className="grid grid-cols-3 gap-2 mt-3">
-                {[10, 25, 50, 100, 250, 500].map(amount => (
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button 
+                onClick={() => setShowDepositModal(true)}
+                className="bg-green-600 hover:bg-green-700 text-white p-2 rounded text-xs font-medium transition-colors"
+              >
+                + Deposit
+              </button>
+              <button 
+                onClick={() => setShowWithdrawModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded text-xs font-medium transition-colors"
+              >
+                - Withdraw
+              </button>
+            </div>
+            
+            <div className="bg-slate-800 rounded p-2 text-xs">
+              <div className="text-slate-400 mb-1">Demo Balance Tools</div>
+              <button 
+                onClick={() => setUser(prev => ({...prev, balance: 10000}))}
+                className="w-full bg-slate-700 hover:bg-slate-600 text-white p-1 rounded text-xs"
+              >
+                Reset to $10,000
+              </button>
+            </div>
+          </div>
+
+          {/* Order Entry */}
+          <div className="p-4 border-b border-slate-800">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">Quick Trade</h3>
+              <div className="flex space-x-1">
+                <button className="px-2 py-1 text-xs bg-blue-600 rounded">Market</button>
+                <button className="px-2 py-1 text-xs bg-slate-700 rounded">Limit</button>
+                <button className="px-2 py-1 text-xs bg-slate-700 rounded">Stop</button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Volume</label>
+                <input
+                  type="number"
+                  value={selectedAmount}
+                  onChange={(e) => setSelectedAmount(Number(e.target.value))}
+                  className="w-full p-2 bg-slate-800 border border-slate-700 rounded text-sm"
+                  step="0.01"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {[10, 25, 50].map(amount => (
                   <button
                     key={amount}
                     onClick={() => setSelectedAmount(amount)}
-                    disabled={user.balance < amount}
-                    className={`px-3 py-2 text-sm rounded font-semibold transition disabled:opacity-50 ${
-                      selectedAmount === amount ? 'bg-blue-600 text-white' : 'bg-slate-600 text-gray-300 hover:bg-slate-500'
-                    }`}
+                    className="p-1 text-xs bg-slate-800 hover:bg-slate-700 rounded"
                   >
                     ${amount}
                   </button>
                 ))}
               </div>
-            </div>
 
-            <div>
-              <label className="block text-gray-300 text-sm font-medium mb-3">Expiry Time</label>
-              <div className="grid grid-cols-5 gap-1">
-                {[
-                  { value: 60, label: '1m' },
-                  { value: 300, label: '5m' },
-                  { value: 900, label: '15m' },
-                  { value: 1800, label: '30m' },
-                  { value: 3600, label: '1h' }
-                ].map(interval => (
-                  <button
-                    key={interval.value}
-                    onClick={() => setSelectedTime(interval.value)}
-                    className={`p-3 text-sm rounded font-semibold transition ${
-                      selectedTime === interval.value
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
-                    }`}
-                  >
-                    {interval.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-slate-700 rounded-lg p-4 text-center">
-              <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Current Price</div>
-              <div className="text-2xl font-mono font-bold">
-                {formatPrice(selectedAsset, marketData[selectedAsset]?.price)}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => placeTrade('PUT')}
-                disabled={user.balance < selectedAmount}
-                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 disabled:opacity-50 text-white font-bold py-6 px-4 rounded-lg transition-all transform hover:scale-105 flex flex-col items-center space-y-2"
-              >
-                <TrendingDown className="w-6 h-6" />
-                <span className="text-lg">PUT</span>
-                <span className="text-xs opacity-75">Lower</span>
-              </button>
-              
-              <button
-                onClick={() => placeTrade('CALL')}
-                disabled={user.balance < selectedAmount}
-                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-white font-bold py-6 px-4 rounded-lg transition-all transform hover:scale-105 flex flex-col items-center space-y-2"
-              >
-                <TrendingUp className="w-6 h-6" />
-                <span className="text-lg">CALL</span>
-                <span className="text-xs opacity-75">Higher</span>
-              </button>
-            </div>
-
-            <div className="bg-slate-700 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Payout:</span>
-                <span className="text-green-400 font-semibold">80%</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Profit:</span>
-                <span className="text-green-400 font-semibold">+${(selectedAmount * 0.8).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Investment:</span>
-                <span className="text-white font-semibold">${selectedAmount.toFixed(2)}</span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => placeTrade('PUT')}
+                  className="bg-red-600 hover:bg-red-700 text-white p-3 rounded font-semibold transition-colors"
+                >
+                  SELL
+                  <div className="text-xs opacity-75">
+                    {formatPrice(selectedAsset, (marketData[selectedAsset]?.price || 0) - 0.0001)}
+                  </div>
+                </button>
+                <button
+                  onClick={() => placeTrade('CALL')}
+                  className="bg-green-600 hover:bg-green-700 text-white p-3 rounded font-semibold transition-colors"
+                >
+                  BUY
+                  <div className="text-xs opacity-75">
+                    {formatPrice(selectedAsset, (marketData[selectedAsset]?.price || 0) + 0.0001)}
+                  </div>
+                </button>
               </div>
             </div>
           </div>
 
-          <div className="flex-1 border-t border-slate-700 p-4">
-            <h3 className="text-white font-medium mb-4">Active Trades ({activeTrades.length})</h3>
-            <div className="space-y-3 max-h-64 overflow-y-auto">
-              {activeTrades.map(trade => {
-                const timeLeft = Math.max(0, Math.ceil((trade.expiryTime - Date.now()) / 1000));
-                return (
-                  <div key={trade.id} className="bg-slate-700 rounded-lg p-3">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-medium text-sm">{trade.asset}</span>
-                      <span className={`px-2 py-1 rounded text-xs font-bold ${
+          {/* Market Sentiment */}
+          <div className="p-4 border-b border-slate-800">
+            <h3 className="text-sm font-semibold mb-3">Market Sentiment</h3>
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>EUR/USD</span>
+                  <span className="text-green-400">72% Bullish</span>
+                </div>
+                <div className="w-full bg-slate-700 rounded-full h-2">
+                  <div className="bg-green-500 h-2 rounded-full" style={{width: '72%'}}></div>
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>GBP/USD</span>
+                  <span className="text-red-400">35% Bullish</span>
+                </div>
+                <div className="w-full bg-slate-700 rounded-full h-2">
+                  <div className="bg-red-500 h-2 rounded-full" style={{width: '35%'}}></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Economic Calendar */}
+          <div className="p-4 border-b border-slate-800">
+            <h3 className="text-sm font-semibold mb-3">Economic Calendar</h3>
+            <div className="space-y-2">
+              {[
+                { time: '14:30', event: 'USD Non-Farm Payrolls', impact: 'high' },
+                { time: '16:00', event: 'EUR ECB Rate Decision', impact: 'medium' },
+                { time: '18:00', event: 'GBP Retail Sales', impact: 'low' }
+              ].map((event, i) => (
+                <div key={i} className="bg-slate-800 rounded p-2 text-xs">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="font-medium">{event.event}</div>
+                      <div className="text-slate-400">{event.time} GMT</div>
+                    </div>
+                    <div className={`w-2 h-2 rounded-full ${
+                      event.impact === 'high' ? 'bg-red-500' :
+                      event.impact === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                    }`}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Positions */}
+          <div className="p-4 border-b border-slate-800">
+            <h3 className="text-sm font-semibold mb-3">Open Positions</h3>
+            <div className="space-y-2">
+              {activeTrades.length > 0 ? (
+                activeTrades.map(trade => (
+                  <div key={trade.id} className="bg-slate-800 rounded p-3 text-xs">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-medium">{trade.asset}</span>
+                      <span className={`px-2 py-1 rounded text-xs ${
                         trade.direction === 'CALL' ? 'bg-green-600' : 'bg-red-600'
                       }`}>
                         {trade.direction}
                       </span>
                     </div>
-                    <div className="flex justify-between text-xs text-gray-400">
-                      <span>${trade.amount}</span>
-                      <span>{timeLeft}s</span>
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      Entry: {formatPrice(trade.asset, trade.entryPrice)}
-                    </div>
-                    <div className="w-full bg-slate-600 rounded-full h-1 mt-2">
-                      <div 
-                        className="bg-blue-500 h-1 rounded-full transition-all duration-1000"
-                        style={{ width: `${(timeLeft / selectedTime) * 100}%` }}
-                      ></div>
+                    <div className="grid grid-cols-3 gap-2 text-slate-400">
+                      <div>
+                        <div>Volume</div>
+                        <div className="text-white">{trade.amount}</div>
+                      </div>
+                      <div>
+                        <div>Entry</div>
+                        <div className="text-white">{formatPrice(trade.asset, trade.entryPrice)}</div>
+                      </div>
+                      <div>
+                        <div>P&L</div>
+                        <div className="text-green-400">+$12.50</div>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-              {activeTrades.length === 0 && (
-                <div className="text-center text-gray-400 py-8 text-sm">
-                  No active trades
+                ))
+              ) : (
+                <div className="text-center text-slate-400 py-8 text-sm">
+                  No open positions
                 </div>
               )}
             </div>
           </div>
+
+          {/* Trading History */}
+          <div className="p-4 border-b border-slate-800">
+            <h3 className="text-sm font-semibold mb-3">Recent Trades</h3>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {tradeHistory.length > 0 ? (
+                tradeHistory.slice(0, 5).map(trade => (
+                  <div key={trade._id} className="bg-slate-800 rounded p-2 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">{trade.asset}</span>
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        trade.result === 'win' ? 'bg-green-600' : 'bg-red-600'
+                      }`}>
+                        {trade.result?.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-slate-400 mt-1">
+                      <span>${trade.amount}</span>
+                      <span className={trade.result === 'win' ? 'text-green-400' : 'text-red-400'}>
+                        {trade.result === 'win' ? '+' : ''}${trade.profit?.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center text-slate-400 py-4 text-xs">
+                  No trading history
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Position Calculator */}
+          <div className="p-4">
+            <h3 className="text-sm font-semibold mb-3">Position Calculator</h3>
+            <div className="space-y-2 text-xs">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-slate-400">Risk %</label>
+                  <input 
+                    type="number" 
+                    defaultValue="2" 
+                    className="w-full p-1 bg-slate-700 rounded text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-400">Stop Loss</label>
+                  <input 
+                    type="number" 
+                    defaultValue="20" 
+                    className="w-full p-1 bg-slate-700 rounded text-xs"
+                  />
+                </div>
+              </div>
+              <div className="bg-slate-800 rounded p-2">
+                <div className="text-slate-400">Suggested Position Size</div>
+                <div className="text-white font-bold">$127.50</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Bottom Status Bar */}
+      <div className="bg-slate-900 border-t border-slate-800 px-4 py-2 flex items-center justify-between text-xs">
+        <div className="flex items-center space-x-4">
+          <span className="text-slate-400">Connected to server</span>
+          <span className="text-slate-400">Ping: 12ms</span>
+          <span className="text-slate-400">Data feed: Real-time</span>
+        </div>
+        <div className="flex items-center space-x-4">
+          <span className="text-slate-400">Server time: {new Date().toLocaleTimeString()}</span>
+          <span className="text-slate-400">Build: v4.2.1</span>
+        </div>
+      </div>
+
+      <DepositModal />
+      <WithdrawModal />
+      <UserProfileModal />
     </div>
   );
 };
 
 // Main Landing Page Component
-export default function ExpertOptionLandingPage({ onStartTrading }) {
+const ExpertOptionLandingPage = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [showTradingDashboard, setShowTradingDashboard] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+  const [authMode, setAuthMode] = useState('login');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
-  
-  // Authentication form data
+
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [registerForm, setRegisterForm] = useState({
     firstName: '',
@@ -489,11 +1141,9 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         });
       }
 
-      // Store token and user data
       localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
       
-      // Redirect to trading dashboard
       setShowTradingDashboard(true);
       setShowAuthModal(false);
       
@@ -521,35 +1171,35 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
   const AuthModal = () => (
     showAuthModal && (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-slate-800 rounded-2xl p-8 w-full max-w-md mx-4 border border-slate-700">
+        <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4 border border-slate-700">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-white">
               {authMode === 'login' ? 'Login' : 'Create Account'}
             </h2>
             <button
               onClick={() => setShowAuthModal(false)}
-              className="text-gray-400 hover:text-white text-2xl"
+              className="text-slate-300 hover:text-white text-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
             >
               ×
             </button>
           </div>
 
           {authError && (
-            <div className="bg-red-900/50 border border-red-500 rounded-lg p-3 mb-4">
-              <p className="text-red-400 text-sm">{authError}</p>
+            <div className="bg-rose-600/10 border border-rose-600 rounded-lg p-6 mb-6">
+              <p className="text-rose-400 text-sm">{authError}</p>
             </div>
           )}
 
-          <form onSubmit={handleAuth} className="space-y-4">
+          <div className="space-y-6">
             {authMode === 'register' && (
               <>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-6">
                   <input
                     type="text"
                     placeholder="First Name"
                     value={registerForm.firstName}
                     onChange={(e) => setRegisterForm({...registerForm, firstName: e.target.value})}
-                    className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                    className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
                     required
                   />
                   <input
@@ -557,7 +1207,7 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
                     placeholder="Last Name"
                     value={registerForm.lastName}
                     onChange={(e) => setRegisterForm({...registerForm, lastName: e.target.value})}
-                    className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                    className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
                     required
                   />
                 </div>
@@ -575,7 +1225,7 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
                   setRegisterForm({...registerForm, email: e.target.value});
                 }
               }}
-              className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+              className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
               required
             />
 
@@ -590,7 +1240,7 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
                   setRegisterForm({...registerForm, password: e.target.value});
                 }
               }}
-              className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+              className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
               required
             />
 
@@ -600,7 +1250,7 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
                 placeholder="Confirm Password"
                 value={registerForm.confirmPassword}
                 onChange={(e) => setRegisterForm({...registerForm, confirmPassword: e.target.value})}
-                className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
                 required
               />
             )}
@@ -608,21 +1258,22 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
             <button
               type="submit"
               disabled={authLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-50 text-white py-3 rounded-lg font-semibold transition-colors"
+              onClick={handleAuth}
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded font-medium transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25"
             >
               {authLoading ? 'Please wait...' : (authMode === 'login' ? 'Login' : 'Create Account')}
             </button>
-          </form>
+          </div>
 
           <div className="mt-6 text-center">
-            <p className="text-gray-400">
+            <p className="text-slate-400 text-sm">
               {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}
               <button
                 onClick={() => {
                   setAuthMode(authMode === 'login' ? 'register' : 'login');
                   setAuthError('');
                 }}
-                className="text-blue-400 hover:text-blue-300 ml-1 font-semibold"
+                className="text-blue-400 hover:text-blue-300 ml-1 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
               >
                 {authMode === 'login' ? 'Sign up' : 'Login'}
               </button>
@@ -630,8 +1281,8 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
           </div>
 
           {authMode === 'login' && (
-            <div className="mt-4 p-3 bg-slate-700/50 rounded-lg">
-              <p className="text-xs text-gray-400 text-center">
+            <div className="mt-6 p-6 bg-slate-700/50 rounded-lg">
+              <p className="text-xs text-slate-400 text-center">
                 Demo Account: demo@trading.com / demo123
               </p>
             </div>
@@ -643,177 +1294,137 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
 
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="text-white">Loading...</div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <div className="text-white text-base">Loading...</div>
       </div>
     );
   }
 
-  // Show trading dashboard if requested
   if (showTradingDashboard) {
     return (
-      <div>
-        <div className="absolute top-4 left-4 z-50">
-          <button
-            onClick={handleBackToLanding}
-            className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            ← Back to Landing
-          </button>
-        </div>
-        <TradingDashboard />
-      </div>
+      <TradingDashboard handleBackToLanding={handleBackToLanding} />
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white">
-      {/* Header */}
-      <header className="relative z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white relative">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-3/4 right-1/4 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 w-32 h-32 bg-purple-500/5 rounded-full blur-2xl animate-bounce"></div>
+      </div>
+      
+      <style>{floatingAnimation}</style>
+      <style>{additionalStyles}</style>
+      <style>{animations}</style>
+
+      <header className="bg-slate-900/98 backdrop-blur-md border-b border-slate-800 sticky top-0 z-50">
         <nav className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <button 
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="text-gray-400 hover:text-white transition-colors md:hidden"
-              >
-                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </button>
-              
+            <div className="flex items-center space-x-8">
               <div className="flex items-center space-x-2">
-                <div className="w-4 h-3 bg-red-500 rounded-sm"></div>
-                <span className="text-gray-400 text-sm">Online chat</span>
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-800 rounded flex items-center justify-center animate-pulse">
+                  <span className="text-white text-xs font-bold">EO</span>
+                </div>
+                <span className="text-white text-lg font-bold">ExpertOption</span>
               </div>
+              
+              <nav className="hidden md:flex items-center space-x-6">
+                <a href="#" className="text-slate-300 hover:text-blue-400 text-sm transition-all duration-300 hover:scale-105">Trading</a>
+                <a href="#" className="text-slate-300 hover:text-blue-400 text-sm transition-all duration-300 hover:scale-105">Education</a>
+                <a href="#" className="text-slate-300 hover:text-blue-400 text-sm transition-all duration-300 hover:scale-105">Markets</a>
+                <a href="#" className="text-slate-300 hover:text-blue-400 text-sm transition-all duration-300 hover:scale-105">Analytics</a>
+                <a href="#" className="text-slate-300 hover:text-blue-400 text-sm transition-all duration-300 hover:scale-105">Company</a>
+                <a href="#" className="text-slate-300 hover:text-blue-400 text-sm transition-all duration-300 hover:scale-105">Support</a>
+                <a href="#" className="text-slate-300 hover:text-blue-400 text-sm transition-all duration-300 hover:scale-105">Blog</a>
+              </nav>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <img src="/expertoption-logo.png" alt="ExpertOption" className="w-8 h-8" />
-              <span className="text-white text-lg font-bold">ExpertOption</span>
-            </div>
-
-            <div className="hidden md:flex items-center space-x-3">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-red-500 rounded-sm animate-pulse"></div>
+                <span className="text-slate-400 text-xs">Online chat</span>
+              </div>
               <button 
                 onClick={handleNavigation}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 text-sm"
+                className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-4 py-2 rounded text-sm font-medium transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25"
               >
-                Login
-              </button>
-              <button 
-                onClick={handleRegister}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 text-sm"
-              >
-                Register
+                Trade Now
               </button>
             </div>
-
-            {/* Mobile Menu */}
-            {mobileMenuOpen && (
-              <div className="absolute top-full left-0 right-0 bg-slate-900 border-t border-slate-700 md:hidden">
-                <div className="flex flex-col items-center space-y-4 py-4">
-                  <button 
-                    onClick={handleNavigation}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 w-full max-w-xs text-sm"
-                  >
-                    Login
-                  </button>
-                  <button 
-                    onClick={handleRegister}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 w-full max-w-xs text-sm"
-                  >
-                    Register
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </nav>
       </header>
 
-      {/* Hero Section */}
-      <section className="container mx-auto px-4 py-12">
-        <div className="grid lg:grid-cols-2 gap-8 items-center">
-          <div className="space-y-6">
-            <h1 className="text-5xl lg:text-6xl font-bold text-white leading-tight">
-              <span className="text-blue-400">Investing</span> Is<br />
-              Even Better Now
-            </h1>
-            
-            <p className="text-gray-400 text-lg leading-relaxed max-w-md">
-              Providing you with the opportunity to invest in more than 100 assets for continuous income
-            </p>
+      <section className="bg-gradient-to-b from-slate-900/80 to-slate-800/80 py-12">
+        <div className="container mx-auto px-4">
+          <div className="grid lg:grid-cols-2 gap-8 items-center">
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <h1 className="text-4xl lg:text-5xl font-bold text-white leading-tight">
+                  <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent animate-pulse">Investing</span> Is<br />
+                  <span className="animate-fadeIn">Even Better Now</span>
+                </h1>
+                <p className="text-slate-400 text-base max-w-md">
+                  Providing you with the opportunity to invest in more than 100 assets for continuous income
+                </p>
+              </div>
 
-            <div className="flex items-center space-x-4">
-              <div className="flex -space-x-1">
-                <div className="w-8 h-8 bg-blue-600 rounded-full border-2 border-slate-900 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">f</span>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="bg-gradient-to-br from-blue-900/30 to-slate-900/50 rounded-lg p-3 border border-blue-800/30 backdrop-blur-sm hover:from-blue-800/40 hover:to-slate-800/60 transition-all duration-300 animate-fadeIn">
+                  <div className="text-blue-300 font-bold">70M+</div>
+                  <div className="text-slate-400">Active traders</div>
                 </div>
-                <div className="w-8 h-8 bg-red-500 rounded-full border-2 border-slate-900 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">m</span>
+                <div className="bg-gradient-to-br from-blue-900/30 to-slate-900/50 rounded-lg p-3 border border-blue-800/30 backdrop-blur-sm hover:from-blue-800/40 hover:to-slate-800/60 transition-all duration-300 animate-fadeIn delay-100">
+                  <div className="text-blue-300 font-bold">100+</div>
+                  <div className="text-slate-400">Trading assets</div>
                 </div>
-                <div className="w-8 h-8 bg-red-600 rounded-full border-2 border-slate-900 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">yt</span>
+                <div className="bg-gradient-to-br from-blue-900/30 to-slate-900/50 rounded-lg p-3 border border-blue-800/30 backdrop-blur-sm hover:from-blue-800/40 hover:to-slate-800/60 transition-all duration-300 animate-fadeIn delay-200">
+                  <div className="text-blue-300 font-bold">$1</div>
+                  <div className="text-slate-400">Min investment</div>
                 </div>
-                <div className="w-8 h-8 bg-blue-700 rounded-full border-2 border-slate-900 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">t</span>
-                </div>
-                <div className="w-8 h-8 bg-green-500 rounded-full border-2 border-slate-900 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">G</span>
+                <div className="bg-gradient-to-br from-blue-900/30 to-slate-900/50 rounded-lg p-3 border border-blue-800/30 backdrop-blur-sm hover:from-blue-800/40 hover:to-slate-800/60 transition-all duration-300 animate-fadeIn delay-300">
+                  <div className="text-blue-300 font-bold">95%</div>
+                  <div className="text-slate-400">Max payout</div>
                 </div>
               </div>
-              <span className="text-gray-400 text-base">+100 assets</span>
+
+              <div className="flex items-center space-x-4">
+                <button 
+                  onClick={handleNavigation}
+                  className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded font-medium transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25 animate-bounce-subtle flex items-center space-x-2"
+                >
+                  <span>Trade Now</span>
+                  <Play className="w-4 h-4" />
+                </button>
+                <div className="flex items-center space-x-2">
+                  <div className="flex -space-x-1">
+                    {['f', 'tw', 'ig', 'yt', 'tg'].map((social, i) => (
+                      <div key={i} className="w-6 h-6 bg-slate-700 rounded-full border border-slate-600 flex items-center justify-center">
+                        <span className="text-white text-xs">{social}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <span className="text-slate-400 text-sm">Follow us</span>
+                </div>
+              </div>
             </div>
 
-            <button 
-              onClick={handleNavigation}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg font-medium transition-all transform hover:scale-105 flex items-center space-x-2 text-lg"
-            >
-              <span>Try free demo</span>
-              <Play className="w-5 h-5 fill-current" />
-            </button>
-          </div>
-
-          {/* Phone Mockup */}
-          <div className="relative flex justify-center lg:justify-start lg:ml-8">
             <div className="relative">
-              <div className="w-72 h-[520px] relative transform rotate-3">
-                <div className="absolute inset-0 bg-gradient-to-b from-gray-800 to-gray-900 rounded-[2.5rem] shadow-2xl border-4 border-gray-600">
-                  <div className="p-4 h-full flex flex-col">
-                    <div className="flex justify-between items-center mb-4 text-white text-sm">
-                      <span>9:41</span>
-                      <div className="flex space-x-1">
-                        <div className="w-4 h-1 bg-white rounded-full"></div>
-                        <div className="w-1 h-1 bg-white rounded-full"></div>
-                        <div className="w-1 h-1 bg-white rounded-full"></div>
-                      </div>
-                    </div>
-                    <div className="flex-1 space-y-3">
-                      {['Stocks', 'Indices', 'Metals', 'Commodities', 'ETF'].map((item, i) => (
-                        <div key={i} className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 text-center relative overflow-hidden">
-                          <div className="text-white font-semibold text-sm">{item}</div>
-                        </div>
-                      ))}
+              <div className="w-64 h-[480px] mx-auto bg-slate-800 rounded-3xl border border-slate-700 p-4">
+                <div className="h-full bg-slate-900 rounded-2xl p-3 space-y-3">
+                  <div className="flex justify-between items-center text-white text-xs">
+                    <span>9:41</span>
+                    <div className="flex space-x-1">
+                      <div className="w-3 h-1 bg-white rounded"></div>
+                      <div className="w-1 h-1 bg-white/50 rounded"></div>
                     </div>
                   </div>
-                </div>
-                {/* Floating asset list */}
-                <div className="absolute top-24 -right-12 w-64 h-64 bg-gray-700 rounded-lg border-2 border-gray-600 shadow-lg opacity-80">
-                  <div className="p-3 h-full">
-                    <div className="space-y-2">
-                      <div className="h-3 bg-gray-600 rounded w-full"></div>
-                      <div className="h-2 bg-gray-600 rounded w-3/4"></div>
-                      <div className="space-y-1 mt-2">
-                        {['Tesla', 'Apple', 'IBM', 'Google', 'Netflix', 'Facebook (META)'].map((asset, i) => (
-                          <div key={i} className="h-1 bg-gray-600 rounded" style={{width: `${50 + Math.random() * 50}%`}}></div>
-                        ))}
-                      </div>
+                  {['Stocks', 'Indices', 'Metals', 'Commodities', 'ETF'].map((item, i) => (
+                    <div key={i} className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-lg p-3 text-center transition-all duration-300 shadow-sm transform hover:scale-105 animate-slideIn" style={{animationDelay: `${i * 100}ms`}}>
+                      <span className="text-white text-sm font-medium">{item}</span>
                     </div>
-                  </div>
-                </div>
-                <div className="absolute top-12 -right-6 bg-red-500 rounded-full w-8 h-8 flex items-center justify-center shadow-lg">
-                  <span className="text-white text-sm font-bold">T</span>
-                </div>
-                <div className="absolute bottom-16 -left-8 bg-blue-600 rounded-lg px-3 py-2 shadow-lg transform -rotate-12">
-                  <span className="text-white text-sm font-medium">Asset List</span>
+                  ))}
                 </div>
               </div>
             </div>
@@ -821,36 +1432,31 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         </div>
       </section>
 
-      {/* For All Devices */}
-      <section className="bg-slate-800/50 py-16">
+      <section className="bg-gradient-to-b from-slate-800/50 to-slate-900/50 py-8 backdrop-blur-sm">
         <div className="container mx-auto px-4">
-          <h2 className="text-4xl font-bold text-white text-center mb-12">For All Devices</h2>
-          
-          <div className="grid md:grid-cols-4 gap-8">
+          <h2 className="text-2xl font-bold text-white text-center mb-6">For All Devices</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { icon: Smartphone, name: 'Android', desc: '4.4 and higher' },
-              { icon: Smartphone, name: 'iOS', desc: '9.0 and higher' },
-              { icon: Monitor, name: 'Windows', desc: '7 and higher' },
-              { icon: Monitor, name: 'MacOS', desc: 'Macintosh and Safari' }
+              { icon: Smartphone, name: 'Android', desc: '4.4+' },
+              { icon: Smartphone, name: 'iOS', desc: '9.0+' },
+              { icon: Monitor, name: 'Windows', desc: '7+' },
+              { icon: Monitor, name: 'MacOS', desc: 'Safari' }
             ].map((platform, i) => (
-              <div key={i} className="text-center group">
-                <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-blue-700 transition-colors">
-                  <platform.icon className="w-8 h-8 text-white" />
-                </div>
-                <h3 className="text-white font-semibold text-lg mb-1">{platform.name}</h3>
-                <p className="text-gray-400 text-base">{platform.desc}</p>
+              <div key={i} className="bg-gradient-to-br from-blue-900/20 to-slate-900/40 rounded-lg p-4 text-center group hover:from-blue-800/30 hover:to-slate-800/50 transition-all duration-300 border border-blue-800/20 backdrop-blur-sm transform hover:scale-105 hover:-translate-y-1">
+                <platform.icon className="w-8 h-8 text-blue-400 mx-auto mb-2 group-hover:text-blue-300 transition-colors group-hover:scale-110 duration-300" />
+                <h3 className="text-slate-200 font-medium text-sm">{platform.name}</h3>
+                <p className="text-slate-400 text-xs">{platform.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section className="py-16">
+      <section className="bg-gradient-to-b from-slate-900/80 to-slate-800/80 py-12">
         <div className="container mx-auto px-4">
-          <h2 className="text-4xl font-bold text-white text-center mb-12">How It Works</h2>
+          <h2 className="text-2xl font-bold text-white text-center mb-12">How It Works</h2>
           
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-3 gap-6">
             {[
               {
                 icon: Download,
@@ -869,43 +1475,42 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
               }
             ].map((step, i) => (
               <div key={i} className="text-center">
-                <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-6">
+                <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-6">
                   <step.icon className="w-8 h-8 text-white" />
                 </div>
-                <h3 className="text-white font-semibold text-xl mb-3">{step.title}</h3>
-                <p className="text-gray-400 leading-relaxed text-base">{step.desc}</p>
+                <h3 className="text-white font-semibold text-lg mb-3">{step.title}</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">{step.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Trusted Section */}
-      <section className="bg-slate-800/50 py-12">
+      <section className="bg-gradient-to-b from-slate-800/50 to-slate-900/50 py-12 backdrop-blur-sm">
         <div className="container mx-auto px-4">
           <div className="text-center">
             <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-4">
               <Shield className="w-6 h-6 text-white" />
             </div>
-            <h2 className="text-3xl font-bold text-white mb-3">Trusted</h2>
-            <p className="text-gray-400 max-w-xl mx-auto mb-6 text-base">
+            <h2 className="text-2xl font-bold text-white mb-3">Trusted</h2>
+            <p className="text-slate-400 text-sm max-w-xl mx-auto mb-6">
               ExpertOption is trusted by traders from around the world and are trusted by more than 70,000,000 clients.
             </p>
             
             <button 
               onClick={handleNavigation}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 text-lg"
+              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded font-medium transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25"
             >
               Start trading
             </button>
 
-            <div className="bg-slate-700/30 rounded-lg p-4 max-w-sm mx-auto mt-6">
+            <div className="bg-slate-700/50 rounded-lg p-6 max-w-sm mx-auto mt-6">
               <div className="flex items-center space-x-3">
-                <Award className="w-8 h-8 text-blue-400 flex-shrink-0" />
+                <Award className="w-8 h-8 text-blue-600 flex-shrink-0" />
                 <div className="text-left">
                   <div className="text-white font-medium text-base">Best Trading Platform</div>
-                  <div className="text-gray-400 text-sm">Award winner at China Foreign Expo</div>
-                  <div className="text-gray-400 text-sm">ShowChina 6/7 May 2017</div>
+                  <div className="text-slate-400 text-sm">Award winner at China Foreign Expo</div>
+                  <div className="text-slate-400 text-sm">ShowChina 6/7 May 2017</div>
                 </div>
               </div>
             </div>
@@ -913,159 +1518,239 @@ export default function ExpertOptionLandingPage({ onStartTrading }) {
         </div>
       </section>
 
-      {/* Global Trading Platform */}
-      <section className="py-12">
-        <div className="container mx-auto px-4">
-          <div className="text-center">
-            <div className="flex items-center justify-center space-x-2 mb-6">
-              <Globe className="w-8 h-8 text-blue-400" />
-              <h2 className="text-2xl font-bold text-white">Global Trading Platform</h2>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
-              {[
-                { value: '$1B', label: 'Minimum Deposit' },
-                { value: '$1', label: 'Minimum Trading Amount' },
-                { value: '0%', label: 'Commissions' },
-                { value: '0%', label: 'Fees' }
-              ].map((stat, i) => (
-                <div key={i} className="text-center">
-                  <div className="text-2xl font-bold text-blue-400 mb-1">{stat.value}</div>
-                  <div className="text-white text-sm font-medium">{stat.label}</div>
+      <section className="bg-gradient-to-b from-slate-900/80 to-slate-800/80 py-12">
+        <div className="container mx-auto px-4 text-center">
+          <div className="flex items-center justify-center space-x-2 mb-6">
+            <Globe className="w-6 h-6 text-blue-400" />
+            <h2 className="text-2xl font-bold text-white">Global Trading Platform</h2>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            {[
+              { value: '$1', label: 'Min Deposit' },
+              { value: '$1', label: 'Min Trade' },
+              { value: '0%', label: 'Commission' },
+              { value: '95%', label: 'Max Payout' }
+            ].map((stat, i) => (
+              <div key={i} className="bg-gradient-to-br from-blue-900/20 to-slate-900/30 rounded-lg p-4 border border-blue-800/20 backdrop-blur-sm hover:from-blue-800/30 hover:to-slate-800/40 transition-all duration-300 animate-pulse" style={{animationDelay: `${i * 200}ms`}}>
+                <div className="text-xl font-bold text-blue-300 mb-1">{stat.value}</div>
+                <div className="text-slate-400 text-xs">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-gradient-to-br from-slate-800/30 to-slate-900/30 rounded-xl p-6 max-w-4xl mx-auto border border-slate-700/20 backdrop-blur-sm">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">
+              {['USA', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD'].map((currency, i) => (
+                <div key={i} className="bg-gradient-to-br from-slate-700/50 to-slate-800/50 border border-slate-600/30 rounded p-2 text-center hover:from-slate-600/50 hover:to-slate-700/50 transition-all duration-300">
+                  <span className="text-slate-200 text-sm font-medium">{currency}</span>
                 </div>
               ))}
             </div>
-
-            <p className="text-gray-400 text-sm mb-6">People from 48 countries trade at ExpertOption</p>
-
-            <div className="relative h-96 mt-12 mb-12">
-              <svg 
-                viewBox="0 0 1200 600" 
-                className="w-full h-full"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path 
-                  d="M600,300 m-200,0 a200,200 0 1,1 400,0 a200,200 0 1,1-400,0"
-                  stroke="#374151" 
-                  strokeWidth="1" 
-                  fill="none"
-                />
-                <g className="opacity-30">
-                  {Array.from({length: 100}).map((_, i) => (
-                    <circle 
-                      key={i}
-                      cx={Math.random() * 1200}
-                      cy={Math.random() * 600}
-                      r={Math.random() * 2 + 1}
-                      fill="#374151"
-                    />
-                  ))}
-                </g>
-              </svg>
-            </div>
+            <p className="text-slate-400 text-sm">Available in 48 countries worldwide</p>
           </div>
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="bg-slate-800/50 py-16">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">Ready to Start Trading?</h2>
-          <p className="text-gray-400 text-lg mb-8 max-w-2xl mx-auto">
-            Join millions of traders worldwide and experience professional trading.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button 
-              onClick={handleNavigation}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105"
-            >
-              Try Free Demo
-            </button>
-            <button 
-              onClick={handleNavigation}
-              className="border-2 border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105"
-            >
-              Start Real Trading
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-slate-900 border-t border-slate-700">
-        <div className="container mx-auto px-4 py-12">
-          <div className="grid md:grid-cols-6 gap-8">
-            <div className="md:col-span-2">
-              <div className="flex items-center space-x-2 mb-4">
-                <img src="/expertoption-logo.png" alt="ExpertOption" className="w-8 h-8" />
-                <span className="text-white font-bold">ExpertOption</span>
-              </div>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                The Company does not provide services to citizens and/or residents of Australia, Austria, Belarus, Belgium, Bulgaria, Canada, Croatia, Cyprus, Czech Republic, Denmark, Estonia, Finland, France, Germany, Greece, Hungary, Iceland, Iran, Ireland, Israel, Italy, Latvia, Liechtenstein, Lithuania, Luxembourg, Malta, Myanmar, Netherlands, North Korea, Norway, Poland, Portugal, Romania, Russia, Singapore, Slovakia, Slovenia, Spain, Sudan, Sweden, Switzerland, UK, Ukraine, USA, Yemen.
-              </p>
-            </div>
-
-            <div>
-              <h4 className="text-white font-semibold mb-4">Home</h4>
-              <ul className="space-y-2">
-                <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Free demo</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Login</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Registration</a></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-white font-semibold mb-4">Trading</h4>
-              <ul className="space-y-2">
-                <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Features</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Account types</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Social trading</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">FAQ</a></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-white font-semibold mb-4">Company</h4>
-              <ul className="space-y-2">
-                <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">About company</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Terms</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Privacy Policy</a></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-white font-semibold mb-4">Payment methods</h4>
-              <div className="grid grid-cols-2 gap-2">
-                {['VISA', 'MC', 'PayPal', 'Skrill', 'Neteller', 'Binance Pay'].map((method) => (
-                  <div key={method} className="bg-slate-800 rounded px-2 py-1 text-center">
-                    <span className="text-white text-xs font-medium">{method}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-700 pt-8 mt-8">
-            <div className="flex flex-col md:flex-row justify-between items-center">
-              <p className="text-gray-400 text-sm">
-                © 2014 - 2024 ExpertOption. All rights reserved.
-              </p>
-              <div className="flex space-x-4 mt-4 md:mt-0">
-                {['f', 't', 'in', 'yt'].map((social) => (
-                  <a key={social} href="#" className="text-gray-400 hover:text-white transition-colors">
-                    <div className="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center">
-                      <span className="text-xs">{social}</span>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </footer>
-
-      <AuthModal />
+<section className="bg-gradient-to-b from-slate-800/50 to-slate-900/50 py-12 backdrop-blur-sm">
+  <div className="container mx-auto px-4">
+    <div className="text-center mb-12">
+      <div className="flex items-center justify-center space-x-2 mb-4">
+        <Users className="w-6 h-6 text-blue-400" />
+        <h2 className="text-2xl font-bold text-white">Join Our Community</h2>
+      </div>
+      <p className="text-slate-400 text-sm max-w-xl mx-auto">
+        Connect with millions of traders worldwide, share strategies, and stay updated with market trends.
+      </p>
     </div>
-  );
-}
+
+    <div className="grid md:grid-cols-3 gap-6">
+      {[
+        {
+          icon: Activity,
+          title: 'Live Market Insights',
+          desc: 'Get real-time updates and expert analysis from our community of traders.'
+        },
+        {
+          icon: BarChart3,
+          title: 'Trading Signals',
+          desc: 'Access professional trading signals to make informed decisions.'
+        },
+        {
+          icon: Users,
+          title: 'Social Trading',
+          desc: 'Follow top traders and copy their successful strategies.'
+        }
+      ].map((feature, i) => (
+        <div
+          key={i}
+          className="bg-gradient-to-br from-blue-900/20 to-slate-900/30 rounded-lg p-6 border border-blue-800/20 backdrop-blur-sm hover:from-blue-800/30 hover:to-slate-800/40 transition-all duration-300 animate-fadeIn"
+          style={{ animationDelay: `${i * 200}ms` }}
+        >
+          <feature.icon className="w-8 h-8 text-blue-400 mb-4 mx-auto" />
+          <h3 className="text-white font-semibold text-lg mb-2">{feature.title}</h3>
+          <p className="text-slate-400 text-sm">{feature.desc}</p>
+        </div>
+      ))}
+    </div>
+
+    <div className="text-center mt-8">
+      <button
+        onClick={handleRegister}
+        className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded font-medium transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25 animate-bounce-subtle"
+      >
+        Join Now
+      </button>
+    </div>
+  </div>
+</section>
+
+<section className="bg-gradient-to-b from-slate-900/80 to-slate-800/80 py-12">
+  <div className="container mx-auto px-4">
+    <div className="text-center mb-12">
+      <div className="flex items-center justify-center space-x-2 mb-4">
+        <CreditCard className="w-6 h-6 text-blue-400" />
+        <h2 className="text-2xl font-bold text-white">Flexible Payment Options</h2>
+      </div>
+      <p className="text-slate-400 text-sm max-w-xl mx-auto">
+        Deposit and withdraw funds with ease using your preferred payment method.
+      </p>
+    </div>
+
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      {[
+        { name: 'Visa', img: '/visa-logo.png' },
+        { name: 'Mastercard', img: '/mastercard-logo.png' },
+        { name: 'PayPal', img: '/paypal-logo.png' },
+        { name: 'Bitcoin', img: '/bitcoin-logo.png' },
+        { name: 'Skrill', img: '/skrill-logo.png' }
+      ].map((method, i) => (
+        <div
+          key={i}
+          className="bg-gradient-to-br from-slate-700/50 to-slate-800/50 rounded-lg p-4 border border-slate-600/30 flex items-center justify-center hover:from-slate-600/50 hover:to-slate-700/50 transition-all duration-300 animate-slideIn"
+          style={{ animationDelay: `${i * 100}ms` }}
+        >
+          <img
+            src={method.img}
+            alt={method.name}
+            className="h-8 w-auto object-contain filter grayscale hover:grayscale-0 transition-all duration-300"
+          />
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<section className="bg-gradient-to-b from-slate-800/50 to-slate-900/50 py-12 backdrop-blur-sm">
+  <div className="container mx-auto px-4">
+    <div className="text-center mb-12">
+      <div className="flex items-center justify-center space-x-2 mb-4">
+        <CheckCircle className="w-6 h-6 text-blue-400" />
+        <h2 className="text-2xl font-bold text-white">Why Choose ExpertOption?</h2>
+      </div>
+      <p className="text-slate-400 text-sm max-w-xl mx-auto">
+        Discover why traders worldwide trust ExpertOption for their trading needs.
+      </p>
+    </div>
+
+    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {[
+        {
+          title: 'Fast Withdrawals',
+          desc: 'Get your funds quickly with same-day processing.'
+        },
+        {
+          title: '24/7 Support',
+          desc: 'Our team is available around the clock to assist you.'
+        },
+        {
+          title: 'Advanced Tools',
+          desc: 'Access professional charting and analysis tools.'
+        },
+        {
+          title: 'Secure Platform',
+          desc: 'Your funds and data are protected with top-tier security.'
+        }
+      ].map((reason, i) => (
+        <div
+          key={i}
+          className="bg-gradient-to-br from-blue-900/20 to-slate-900/30 rounded-lg p-6 border border-blue-800/20 backdrop-blur-sm hover:from-blue-800/30 hover:to-slate-800/40 transition-all duration-300 animate-fadeIn"
+          style={{ animationDelay: `${i * 200}ms` }}
+        >
+          <h3 className="text-white font-semibold text-lg mb-2">{reason.title}</h3>
+          <p className="text-slate-400 text-sm">{reason.desc}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<footer className="bg-slate-900 border-t border-slate-800 py-8">
+  <div className="container mx-auto px-4">
+    <div className="grid md:grid-cols-4 gap-8">
+      <div>
+        <div className="flex items-center space-x-2 mb-4">
+          <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-800 rounded flex items-center justify-center">
+            <span className="text-white text-xs font-bold">EO</span>
+          </div>
+          <span className="text-white text-lg font-bold">ExpertOption</span>
+        </div>
+        <p className="text-slate-400 text-sm">
+          Empowering wealth creation since 2014. Trade with confidence.
+        </p>
+      </div>
+
+      <div>
+        <h3 className="text-white font-semibold mb-4">Company</h3>
+        <ul className="space-y-2 text-sm">
+          <li><a href="#" className="text-slate-400 hover:text-blue-400 transition-colors">About Us</a></li>
+          <li><a href="#" className="text-slate-400 hover:text-blue-400 transition-colors">Careers</a></li>
+          <li><a href="#" className="text-slate-400 hover:text-blue-400 transition-colors">Press</a></li>
+          <li><a href="#" className="text-slate-400 hover:text-blue-400 transition-colors">Legal</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 className="text-white font-semibold mb-4">Resources</h3>
+        <ul className="space-y-2 text-sm">
+          <li><a href="#" className="text-slate-400 hover:text-blue-400 transition-colors">Education</a></li>
+          <li><a href="#" className="text-slate-400 hover:text-blue-400 transition-colors">Blog</a></li>
+          <li><a href="#" className="text-slate-400 hover:text-blue-400 transition-colors">FAQ</a></li>
+          <li><a href="#" className="text-slate-400 hover:text-blue-400 transition-colors">Support</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 className="text-white font-semibold mb-4">Connect</h3>
+        <div className="flex space-x-4 mb-4">
+          {['f', 'tw', 'ig', 'yt', 'tg'].map((social, i) => (
+            <a
+              key={i}
+              href="#"
+              className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center text-white hover:bg-blue-600 transition-all duration-300"
+            >
+              <span className="text-xs">{social}</span>
+            </a>
+          ))}
+        </div>
+        <p className="text-slate-400 text-sm">support@expertoption.com</p>
+      </div>
+    </div>
+
+    <div className="border-t border-slate-800 mt-8 pt-6 text-center">
+      <p className="text-slate-400 text-sm">
+        &copy; {new Date().getFullYear()} ExpertOption. All rights reserved.
+      </p>
+      <p className="text-slate-400 text-xs mt-2">
+        Risk Warning: Trading involves significant risk and may not be suitable for everyone.
+      </p>
+    </div>
+  </div>
+</footer>
+
+<AuthModal />
+</div>
+);
+};
+
+export default ExpertOptionLandingPage;
