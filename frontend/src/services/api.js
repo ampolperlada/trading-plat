@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:5001/api';  // Make sure it's 5001, not 5000
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 class ApiService {
   async request(endpoint, options = {}) {
