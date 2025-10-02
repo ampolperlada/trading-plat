@@ -58,7 +58,12 @@ const CACHE_DURATION = 30000; // 30 seconds
 // Middleware setup
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  origin: [
+    process.env.FRONTEND_URL || "http://localhost:3000",
+    "http://localhost:3001", // Add this if your React app runs on 3001
+    "http://localhost:3002", // Or any other port it might use
+    "http://localhost:5001"  // Add backend origin for debugging
+  ],
   credentials: true
 }));
 
