@@ -1,6 +1,7 @@
 [build]
+  base = "frontend"          # Tells Netlify to run commands in /frontend
   command = "npm run build"
-  publish = "frontend/.next"  # Use the correct build output directory
+  publish = ".next"          # Because build output is at frontend/.next
 
 [[redirects]]
   from = "/*"
