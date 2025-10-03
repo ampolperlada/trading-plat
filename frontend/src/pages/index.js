@@ -1,23 +1,21 @@
 // src/pages/index.js - Expert Option Landing Page
-import { useEffect, useState } from 'react';
-import ExpertOptionClone from '../components/ExpertOptionClone';
-import ExpertOptionLandingPage from '../components/ExpertOptionLandingPage';
+import { useState } from 'react';
+import dynamic from 'next/dynamic';
+
+// Dynamically import components with no SSR
+const ExpertOptionClone = dynamic(() => import('../components/ExpertOptionClone'), {
+  ssr: false,
+  loading: () => <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+    <div className="text-white">Loading...</div>
+  </div>
+});
+
+const ExpertOptionLandingPage = dynamic(() => import('../components/ExpertOptionLandingPage'), {
+  ssr: false,
+});
 
 export default function Home() {
-  const [mounted, setMounted] = useState(false);
   const [showTrading, setShowTrading] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="text-white">Loading ExpertOption...</div>
-      </div>
-    );
-  }
 
   if (showTrading) {
     return <ExpertOptionClone />;
