@@ -6,6 +6,7 @@ const nextConfig = {
     unoptimized: true,
   },
   distDir: 'out',
+  trailingSlash: true, // Helps with static export routing
 }
 
 module.exports = nextConfig;
