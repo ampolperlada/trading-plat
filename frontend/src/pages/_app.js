@@ -1,11 +1,11 @@
-import { WebSocketProvider } from '../contexts/WebSocketContext';
 import '../styles/globals.css';
+import { AuthProvider } from '../contexts/AuthContext';
 
 function MyApp({ Component, pageProps }) {
   return (
-    <WebSocketProvider>
+    <AuthProvider>
       <Component {...pageProps} />
-    </WebSocketProvider>
+    </AuthProvider>
   );
 }
 

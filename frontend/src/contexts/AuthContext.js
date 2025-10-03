@@ -1,4 +1,3 @@
-// frontend/src/contexts/AuthContext.js - Enhanced Authentication Context
 import { createContext, useContext, useReducer, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { toast } from 'react-toastify';
@@ -40,6 +39,24 @@ const authReducer = (state, action) => {
         ...state,
         user: { ...state.user, balance: action.payload }
       };
+    case 'DEPOSIT':
+      return {
+        ...state,
+        user: {
+          ...state.user,
+          balance: state.user.balance + action.payload.amount,
+          deposits: [...(state.user.deposits || []), action.payload]
+        }
+      };
+    case 'WITHDRAW':
+      return {
+        ...state,
+        user: {
+          ...state.user,
+          balance: state.user.balance - action.payload.amount,
+          withdrawals: [...(state.user.withdrawals || []), action.payload]
+        }
+      };
     default:
       return state;
   }
@@ -60,7 +77,6 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
-    
     if (token && user) {
       dispatch({
         type: 'LOGIN_SUCCESS',
@@ -69,6 +85,8 @@ export function AuthProvider({ children }) {
           user: JSON.parse(user)
         }
       });
+    } else {
+      toast.info('This is a demo trading platform for educational purposes only. No real money is involved.');
     }
   }, []);
 
@@ -78,56 +96,43 @@ export function AuthProvider({ children }) {
     password: 'demo123'
   };
 
-  const loginWithBackend = async (email, password) => {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ email, password })
-    });
-
-    if (!response.ok) {
-      throw new Error('Backend login failed');
-    }
-
-    return await response.json();
-  };
-
   const loginWithDemo = async (email, password) => {
-    // Check demo credentials
-    if (email === demoCredentials.email && password === demoCredentials.password) {
+    const users = JSON.parse(localStorage.getItem('demoUsers') || '{}');
+    const user = users[email];
+
+    if (user && user.password === password) {
+      const userWithoutPassword = { ...user };
+      delete userWithoutPassword.password;
       return {
-        token: 'demo-jwt-token-' + Date.now(),
-        user: {
-          id: 1,
-          email: 'demo@trading.com',
-          name: 'Demo User',
-          balance: 10000,
-          accountType: 'demo'
-        }
+        token: `demo-jwt-token-${Date.now()}`,
+        user: userWithoutPassword
       };
-    } else {
-      throw new Error('Invalid demo credentials');
     }
+    throw new Error('Invalid demo credentials');
   };
 
   const login = async (email, password) => {
     dispatch({ type: 'LOGIN_START' });
-    
     try {
       let data;
-      
-      // Try backend first, fallback to demo
-      try {
-        console.log('🔄 Attempting backend login...');
-        data = await loginWithBackend(email, password);
-        console.log('✅ Backend login successful');
-      } catch (backendError) {
-        console.log('⚠️ Backend unavailable, trying demo login...');
+      if (email === demoCredentials.email && password === demoCredentials.password) {
+        data = {
+          token: `demo-jwt-token-${Date.now()}`,
+          user: {
+            id: '1',
+            email: demoCredentials.email,
+            name: 'Demo User',
+            balance: 10000,
+            deposits: [],
+            withdrawals: [],
+            trades: [],
+            accountType: 'demo'
+          }
+        };
+      } else {
         data = await loginWithDemo(email, password);
-        console.log('✅ Demo login successful');
       }
+      console.log('✅ Demo login successful');
 
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
@@ -137,7 +142,7 @@ export function AuthProvider({ children }) {
         payload: data
       });
 
-      toast.success(`Welcome ${data.user.name}!`);
+      toast.success(`Welcome ${data.user.name}! This is a simulated trading environment for learning purposes only.`);
       router.push('/trading');
     } catch (error) {
       dispatch({
@@ -148,52 +153,41 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const registerWithBackend = async (userData) => {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(userData)
-    });
-
-    if (!response.ok) {
-      throw new Error('Backend registration failed');
+  const registerWithDemo = async (userData) => {
+    const users = JSON.parse(localStorage.getItem('demoUsers') || '{}');
+    if (users[userData.email]) {
+      throw new Error('User already exists');
     }
 
-    return await response.json();
-  };
+    const newUser = {
+      id: Date.now().toString(),
+      email: userData.email,
+      password: userData.password,
+      name: userData.name,
+      balance: 10000,
+      deposits: [],
+      withdrawals: [],
+      trades: [],
+      accountType: 'demo',
+      createdAt: new Date().toISOString()
+    };
 
-  const registerWithDemo = async (userData) => {
-    // Create demo account
+    users[userData.email] = newUser;
+    localStorage.setItem('demoUsers', JSON.stringify(users));
+
+    const userWithoutPassword = { ...newUser };
+    delete userWithoutPassword.password;
     return {
-      token: 'demo-jwt-token-' + Date.now(),
-      user: {
-        id: Date.now(),
-        email: userData.email,
-        name: userData.name,
-        balance: 10000,
-        accountType: 'demo'
-      }
+      token: `demo-jwt-token-${Date.now()}`,
+      user: userWithoutPassword
     };
   };
 
   const register = async (userData) => {
     dispatch({ type: 'LOGIN_START' });
-    
     try {
-      let data;
-      
-      // Try backend first, fallback to demo
-      try {
-        console.log('🔄 Attempting backend registration...');
-        data = await registerWithBackend(userData);
-        console.log('✅ Backend registration successful');
-      } catch (backendError) {
-        console.log('⚠️ Backend unavailable, creating demo account...');
-        data = await registerWithDemo(userData);
-        console.log('✅ Demo account created');
-      }
+      const data = await registerWithDemo(userData);
+      console.log('✅ Demo account created');
 
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
@@ -203,7 +197,7 @@ export function AuthProvider({ children }) {
         payload: data
       });
 
-      toast.success('Account created successfully!');
+      toast.success('Demo account created successfully! This is a simulated trading environment for educational purposes only.');
       router.push('/trading');
     } catch (error) {
       dispatch({
@@ -222,14 +216,78 @@ export function AuthProvider({ children }) {
     toast.success('Logged out successfully');
   };
 
-  const updateBalance = (newBalance) => {
-    dispatch({ type: 'UPDATE_BALANCE', payload: newBalance });
-    
-    const user = JSON.parse(localStorage.getItem('user'));
-    if (user) {
-      user.balance = newBalance;
-      localStorage.setItem('user', JSON.stringify(user));
+  const deposit = (amount) => {
+    if (!state.user) {
+      toast.error('Please log in to deposit funds');
+      return;
     }
+    if (amount <= 0) {
+      toast.error('Invalid deposit amount');
+      return;
+    }
+
+    dispatch({
+      type: 'DEPOSIT',
+      payload: {
+        amount,
+        date: new Date().toISOString(),
+        method: 'simulated' // Added for tracking
+      }
+    });
+
+    const users = JSON.parse(localStorage.getItem('demoUsers') || '{}');
+    const currentUser = users[state.user.email];
+    currentUser.balance += amount;
+    currentUser.deposits = [...(currentUser.deposits || []), {
+      amount,
+      date: new Date().toISOString(),
+      method: 'simulated'
+    }];
+    users[state.user.email] = currentUser;
+    localStorage.setItem('demoUsers', JSON.stringify(users));
+
+    const updatedUser = { ...currentUser };
+    delete updatedUser.password;
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+
+    toast.success(`Successfully deposited ${amount} in demo funds. This is a simulation for learning purposes only.`);
+  };
+
+  const withdraw = (amount) => {
+    if (!state.user) {
+      toast.error('Please log in to withdraw funds');
+      return;
+    }
+    if (amount <= 0 || state.user.balance < amount) {
+      toast.error('Invalid or insufficient funds for withdrawal');
+      return;
+    }
+
+    dispatch({
+      type: 'WITHDRAW',
+      payload: {
+        amount,
+        date: new Date().toISOString(),
+        method: 'simulated' // Added for tracking
+      }
+    });
+
+    const users = JSON.parse(localStorage.getItem('demoUsers') || '{}');
+    const currentUser = users[state.user.email];
+    currentUser.balance -= amount;
+    currentUser.withdrawals = [...(currentUser.withdrawals || []), {
+      amount,
+      date: new Date().toISOString(),
+      method: 'simulated'
+    }];
+    users[state.user.email] = currentUser;
+    localStorage.setItem('demoUsers', JSON.stringify(users));
+
+    const updatedUser = { ...currentUser };
+    delete updatedUser.password;
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+
+    toast.success(`Successfully withdrew ${amount} in demo funds. This is a simulation for learning purposes only.`);
   };
 
   return (
@@ -238,9 +296,14 @@ export function AuthProvider({ children }) {
       login,
       register,
       logout,
-      updateBalance
+      deposit,
+      withdraw,
+      updateBalance: (newBalance) => dispatch({ type: 'UPDATE_BALANCE', payload: newBalance })
     }}>
       {children}
+      <div className="fixed bottom-4 right-4 bg-yellow-100 p-4 rounded-lg shadow-lg text-black text-sm font-semibold">
+        <p>Disclaimer: This is a demo trading platform for educational purposes only. No real money is involved, and all transactions are simulated. Trading involves significant risk and may not be suitable for everyone.</p>
+      </div>
     </AuthContext.Provider>
   );
 }
