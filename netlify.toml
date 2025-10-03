@@ -1,6 +1,7 @@
 [build]
+  base = "frontend"
   command = "npm run build"
-  publish = "frontend/.next"  # Use the correct build output directory
+  publish = ".next"
 
 [[redirects]]
   from = "/*"
